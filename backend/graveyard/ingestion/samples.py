@@ -30,18 +30,33 @@ class SampleError(Exception):
     """The sample sources are inconsistent. A programming error, not a user error."""
 
 
-def _git(args: list[str], cwd: Path, env: dict[str, str] | None = None) -> str:
-    result = subprocess.run(
-        ["git", "-c", "core.autocrlf=false", "-c", "commit.gpgsign=false", *args],
-        cwd=cwd,
-        env={**os.environ, **(env or {})},
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        timeout=60,
-        check=False,
+def _git_env(extra: dict[str, str] | None) -> dict[str, str]:
+    """Isolate git from the caller's environment and config (including any hooks config)."""
+    env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+    env.update(
+        GIT_CONFIG_NOSYSTEM="1",
+        GIT_CONFIG_GLOBAL=os.devnull,
+        GIT_TERMINAL_PROMPT="0",
+        **(extra or {}),
     )
+    return env
+
+
+def _git(args: list[str], cwd: Path, env: dict[str, str] | None = None) -> str:
+    try:
+        result = subprocess.run(
+            ["git", "-c", "core.autocrlf=false", "-c", "commit.gpgsign=false", *args],
+            cwd=cwd,
+            env=_git_env(env),
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=60,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise SampleError(f"git {' '.join(args[:2])} could not run: {exc}") from exc
     if result.returncode != 0:
         raise SampleError(f"git {' '.join(args[:2])} failed: {result.stderr.strip()[:300]}")
     return result.stdout
