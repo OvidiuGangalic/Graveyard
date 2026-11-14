@@ -1,0 +1,34 @@
+{
+  "commits": [
+    {
+      "days_ago": 900,
+      "author": "Ada Marsh",
+      "message": "Initial shop service",
+      "files": ["README.md", "pyproject.toml", "shop/__init__.py", "shop/text.py", "shop/norm_a.py", "shop/norm_b.py", "shop/helpers.py", "shop/stock.py"]
+    },
+    {
+      "days_ago": 700,
+      "author": "Ben Okafor",
+      "message": "Add web, views and CLI",
+      "files": ["shop/web.py", "shop/views.py", "shop/cli.py", "shop/tax/__init__.py", "shop/tax/rates.py", "shop/dynamic.py", "shop/reports.py", "shop/visitor.py"]
+    },
+    {
+      "days_ago": 550,
+      "author": "Ada Marsh",
+      "message": "Add tests",
+      "files": ["conftest.py", "tests/test_shop.py"]
+    },
+    {
+      "days_ago": 480,
+      "author": "Chen Li",
+      "message": "Add storefront",
+      "files": [
+        "web/package.json", "web/src/middleware.ts", "web/src/app/layout.tsx", "web/src/app/page.tsx",
+        "web/src/app/api/items/route.ts", "web/src/components/Badge.tsx", "web/src/components/Panel.tsx",
+        "web/src/lib/types.ts", "web/src/lib/api.ts", "web/src/lib/retry.ts", "web/src/lib/cart.ts",
+        "web/src/lib/slug.js", "web/src/utils/index.ts", "web/src/utils/pad.ts",
+        "web/src/utils/money.ts", "web/src/utils/date.ts"
+      ]
+    }
+  ]
+}
