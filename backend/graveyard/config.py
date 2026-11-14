@@ -52,6 +52,7 @@ REEXPORT_DEPTH = 5
 # --- git archaeology (spec 04) ---
 MAX_BLAME_ITEMS = 300
 GIT_CMD_TIMEOUT_S = 10
+ARCHAEOLOGY_BUDGET_S: int | None = _optional_int("ARCHAEOLOGY_BUDGET_S")
 
 # --- verdicts and pipeline (spec 05) ---
 OLD_AGE_DAYS = 180
