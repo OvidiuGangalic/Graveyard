@@ -51,12 +51,16 @@ class _Collector:
         self.out: list[Occurrence] = []
         self.shapes: dict[int, CallShape] = {}
         self.line: int | None = None  # fixed line while visiting a parsed string
+        self.self_param: str | None = None  # first parameter of the enclosing method
+        self.depth = 0  # class nesting depth
 
     def add(self, node: Any, name: str, form: Any, receiver: str | None, ctx: _Ctx) -> None:
         line = self.line or getattr(node, "end_lineno", None) or node.lineno
         store = isinstance(getattr(node, "ctx", None), ast.Store | ast.Del)
         shape = self.shapes.get(id(node))
-        self.out.append(Occurrence(name, line, form, receiver, ctx[0], ctx[1], store, shape))
+        self.out.append(
+            Occurrence(name, line, form, receiver, ctx[0], ctx[1], store, shape, self.self_param)
+        )
 
     def string(self, text: str, node: Any, ctx: _Ctx, mode: str) -> None:
         line = self.line or node.lineno
@@ -111,13 +115,24 @@ class _Collector:
             self.visit(node.args, ctx)
             if node.returns:
                 self.visit(node.returns, ctx, True)
+            saved = self.self_param
+            if ctx[1]:
+                first = [*node.args.posonlyargs, *node.args.args][:1]
+                static = any(_dotted(d) == "staticmethod" for d in node.decorator_list)
+                ok = self.depth == 1 and first and not static
+                self.self_param = first[0].arg if ok else None
+            elif ctx[0] is None:
+                self.self_param = None
             for s in node.body:
                 self.visit(s, (ctx[0], False))
+            self.self_param = saved
         elif isinstance(node, ast.ClassDef):
             for e in (*node.decorator_list, *node.bases, *node.keywords):
                 self.visit(e, ctx)
+            self.depth += 1
             for s in node.body:
                 self.visit(s, (ctx[0] or node.name, True))
+            self.depth -= 1
         else:
             self.children(node, ctx, ann)
 

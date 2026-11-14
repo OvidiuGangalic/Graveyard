@@ -10,7 +10,7 @@ from graveyard import cli
 from graveyard.analyzers.python.analyser import analyse_python
 from graveyard.ingestion import ingest_local
 from graveyard.ingestion.samples import sample_snapshot
-from graveyard.models import AnalysisTimeout, RepoSnapshot
+from graveyard.models import AnalysisTimeout, Flag, RepoSnapshot
 
 
 def repo(tmp_path: Path, files: dict[str, str]) -> RepoSnapshot:
@@ -122,6 +122,14 @@ def test_haunted_sample_apply_discount_versions() -> None:
     }
     assert ("inventory/pricing_v1.py", "apply_discount") in found
     assert ("inventory/pricing.py", "apply_discount") not in found
+
+
+def test_haunted_sample_stock_adjust_arity_mismatch() -> None:
+    cands = {c.qualified_name: c for c in analyse_python(sample_snapshot("haunted")).candidates}
+    assert "Stock.adjust" not in cands
+    v1 = cands["StockV1.adjust"]
+    assert v1.flags == {Flag.ARITY_MISMATCH}
+    assert v1.flag_details == {Flag.ARITY_MISMATCH: "inventory/cli.py:10"}
 
 
 def test_exempt_entry_points_are_never_reported(tmp_path: Path) -> None:

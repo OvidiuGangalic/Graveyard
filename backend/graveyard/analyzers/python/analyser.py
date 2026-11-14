@@ -6,6 +6,7 @@ import logging
 from collections import defaultdict
 
 from graveyard.analyzers.common import cap_callers, check_deadline, clip, snippet_for
+from graveyard.analyzers.python.arity import incompatible
 from graveyard.analyzers.python.definitions import collect_definitions, parse_module
 from graveyard.analyzers.python.entrypoints import exempt_rule, load_script_entries
 from graveyard.analyzers.python.records import FileFacts, FunctionDef, Occurrence
@@ -16,6 +17,7 @@ from graveyard.models import (
     AnalyserResult,
     Caller,
     Candidate,
+    Flag,
     ProgressFn,
     RepoSnapshot,
     no_progress,
@@ -83,7 +85,7 @@ def analyse_python(
             cls = classes.get(func.class_name) if func.class_name else None
             if exempt_rule(func, cls, source, scripts):  # PY-E1..E9: never reported
                 continue
-            entries = resolved.get(func, []) + [
+            by_name = [
                 e
                 for e in unresolved.get(func.name, ())
                 if func.class_name is None  # bare names never mean methods (PY-S7)
@@ -91,12 +93,30 @@ def analyse_python(
                 or e[1].form != "name"
                 or e[1].in_class_body
             ]
+            skipped = [  # PY-A1: calls this definition could not accept
+                e
+                for e in by_name
+                if not resolve_all_unresolved
+                and e[1].call
+                and incompatible(func, e[1].call, e[1].receiver)
+            ]
+            entries = resolved.get(func, []) + [e for e in by_name if e not in skipped]
             used = any(
                 not is_test and not _inside(func, source.path, occ.line, path)
                 for path, occ, is_test in entries
             )
             if used:
                 continue
+            flags: set[Flag] = set()
+            details: dict[Flag, str] = {}
+            calls = sorted(
+                (path, occ.line)
+                for path, occ, is_test in skipped
+                if not is_test and not _inside(func, source.path, occ.line, path)
+            )
+            if calls:  # PY-F7
+                flags.add(Flag.ARITY_MISMATCH)
+                details[Flag.ARITY_MISMATCH] = f"{calls[0][0]}:{calls[0][1]}"
             lines = facts[source.path].lines
             tests = [
                 Caller(path, occ.line, "test_reference", clip(_line(texts[path], occ.line)))
@@ -118,6 +138,8 @@ def analyse_python(
                     snippet_truncated=truncated,
                     callers=cap_callers(tests),
                     test_coverage=coverage,
+                    flags=frozenset(flags),
+                    flag_details=details,
                 )
             )
     candidates.sort(key=lambda c: (c.file_path, c.start_line, c.name))
