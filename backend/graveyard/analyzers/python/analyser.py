@@ -5,11 +5,25 @@ from __future__ import annotations
 import logging
 from collections import defaultdict
 
-from graveyard.analyzers.common import cap_callers, check_deadline, clip, snippet_for
+from graveyard.analyzers.common import (
+    PY_TOKEN,
+    TextIndex,
+    cap_callers,
+    check_deadline,
+    clip,
+    snippet_for,
+)
 from graveyard.analyzers.python.arity import incompatible
 from graveyard.analyzers.python.definitions import collect_definitions, parse_module
 from graveyard.analyzers.python.entrypoints import exempt_rule, load_script_entries
-from graveyard.analyzers.python.records import FileFacts, FunctionDef, Occurrence
+from graveyard.analyzers.python.evidence import (
+    RepoFacts,
+    collect_strings,
+    dunder_all_callers,
+    flags_for,
+    string_callers,
+)
+from graveyard.analyzers.python.records import FileFacts, FunctionDef, Occurrence, StringLit
 from graveyard.analyzers.python.references import _tokens, collect_occurrences
 from graveyard.analyzers.python.resolve import ModuleIndex, Unresolved, resolve
 from graveyard.ingestion.walker import read_text
@@ -43,6 +57,7 @@ def analyse_python(
     facts: dict[str, FileFacts] = {}
     texts: dict[str, list[str]] = {}
     occs: list[_Entry] = []
+    strings_by_token: dict[str, list[StringLit]] = defaultdict(list)  # PY-W1 lookup
     failed = 0
     for done, source in enumerate(files, 1):
         check_deadline(deadline)
@@ -51,9 +66,14 @@ def analyse_python(
             tree = parse_module(text.replace("\r\n", "\n"))
             file_facts = collect_definitions(source.path, text, tree)
             occurrences = collect_occurrences(text, tree)
+            strings = collect_strings(source.path, tree, file_facts.lines) if tree else ()
         except Exception:
             log.exception("Python analysis failed for %s", source.path)
             file_facts, occurrences = FileFacts(source.path, False), tuple(_tokens(text))
+            strings = ()
+        for lit in strings:
+            for token in set(PY_TOKEN.findall(lit.value)):
+                strings_by_token[token].append(lit)
         failed += not file_facts.parsed
         facts[source.path] = file_facts
         texts[source.path] = text.replace("\r\n", "\n").split("\n")
@@ -74,6 +94,12 @@ def analyse_python(
 
     has_tests = any(f.is_test for f in files)
     scripts = load_script_entries(snapshot.root, snapshot.text_files)
+    text_index = TextIndex(snapshot.root, snapshot.text_files)
+    repo = RepoFacts(
+        class_names=frozenset(c.name for ff in facts.values() for c in ff.classes),
+        has_reflection=any(ff.has_getattr_reflection for ff in facts.values()),
+        facts_by_file=facts,
+    )
     candidates: list[Candidate] = []
     defined = 0
     for source in files:
@@ -117,7 +143,16 @@ def analyse_python(
             if calls:  # PY-F7
                 flags.add(Flag.ARITY_MISMATCH)
                 details[Flag.ARITY_MISMATCH] = f"{calls[0][0]}:{calls[0][1]}"
-            lines = facts[source.path].lines
+            ff = facts[source.path]
+            nearby: dict[str, list[StringLit]] = defaultdict(list)
+            for lit in strings_by_token.get(func.name, ()):
+                nearby[lit.file].append(lit)
+            weak = string_callers(func, {k: tuple(v) for k, v in nearby.items()}, text_index)
+            weak += dunder_all_callers(func, ff, repo)
+            more_flags, more_details = flags_for(func, cls, ff, repo, weak)  # PY-F1..F6
+            flags |= more_flags
+            details.update(more_details)
+            lines = ff.lines
             tests = [
                 Caller(path, occ.line, "test_reference", clip(_line(texts[path], occ.line)))
                 for path, occ, is_test in entries
@@ -136,7 +171,7 @@ def analyse_python(
                     end_line=func.end_line,
                     code_snippet=snippet,
                     snippet_truncated=truncated,
-                    callers=cap_callers(tests),
+                    callers=cap_callers(tests + weak),
                     test_coverage=coverage,
                     flags=frozenset(flags),
                     flag_details=details,
