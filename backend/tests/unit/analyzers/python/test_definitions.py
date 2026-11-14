@@ -14,7 +14,7 @@ def funcs(src: str) -> dict[str, FunctionDef]:
     return {f.qualified_name: f for f in facts(src).functions}
 
 
-def test_nested_lambda_and_conditional_defs_ignored() -> None:
+def test_nested_lambda_and_conditional_defs_ignored_but_bound() -> None:
     f = facts(
         "def top():\n    def inner(): pass\n    g = lambda: 1\n"
         "if X:\n    def cond(): pass\ntry:\n    def tried(): pass\nexcept E:\n    pass\n"
@@ -22,6 +22,9 @@ def test_nested_lambda_and_conditional_defs_ignored() -> None:
         "    if X:\n        def m(self): pass\n"
     )
     assert [x.qualified_name for x in f.functions] == ["top"]
+    names = {b.name: b.kind for b in f.bindings}
+    assert names["cond"] == "def" and names["tried"] == "def" and names["C"] == "class"
+    assert "inner" not in names
 
 
 def test_span_async_and_methods() -> None:
@@ -108,15 +111,35 @@ def test_staticmethod() -> None:
     assert fs["C.a"].is_staticmethod and not fs["C.b"].is_staticmethod
 
 
-def test_module_getattr() -> None:
-    assert facts("def __getattr__(n): ...\n").has_module_getattr
-    assert not facts("class C:\n    def __getattr__(self, n): ...\n").has_module_getattr
+def test_bindings() -> None:
+    f = facts(
+        "import a.b as c\nimport d.e\nfrom p import q, r as s\nx = 1\ny: int = 2\n"
+        "a1, (b1, *c1) = t\nz += 1\ndef fn():\n    global g1\nclass K: pass\nif X:\n    w = 1\n"
+    )
+    got = {(b.name, b.kind) for b in f.bindings}
+    assert {("c", "import"), ("d", "import"), ("q", "import"), ("s", "import")} <= got
+    assert {("x", "assign"), ("y", "assign"), ("a1", "assign"), ("b1", "assign")} <= got
+    assert {("c1", "assign"), ("z", "assign"), ("g1", "global"), ("w", "assign")} <= got
+    assert {("fn", "def"), ("K", "class")} <= got
+    assert ("a", "import") not in got
+    imp = {b.name: (b.module, b.level, b.imported) for b in f.bindings if b.kind == "import"}
+    assert imp["c"] == ("a.b", 0, None) and imp["s"] == ("p", 0, "r")
+    rel = facts("from ..pkg import m\nfrom . import n\n").bindings
+    assert [(b.module, b.level, b.imported) for b in rel] == [("pkg", 2, "m"), (None, 1, "n")]
+
+
+def test_dunder_all_getattr_star() -> None:
+    f = facts("__all__ = ['a', 'b']\n__all__ += ('c',)\ndef __getattr__(n): ...\nfrom m import *\n")
+    assert f.dunder_all == ("a", "b", "c")
+    assert f.has_module_getattr and f.has_star_import
+    g = facts("class C:\n    def __getattr__(self, n): ...\n")
+    assert not g.has_module_getattr and not g.has_star_import
 
 
 @pytest.mark.parametrize("src", ["print 'hi'\n", "x = 1\x00\n", "def (:\n", "(" * 5000])
 def test_unparseable(src: str) -> None:
     f = facts(src)
-    assert not f.parsed and f.functions == ()
+    assert not f.parsed and f.functions == () and f.bindings == ()
     assert parse_module(src) is None
 
 

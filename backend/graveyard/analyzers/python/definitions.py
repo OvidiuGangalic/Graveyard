@@ -1,19 +1,22 @@
-"""Collect analysable functions and classes from one file."""
+"""Collect analysable functions, classes and module-level bindings from one file."""
 
 from __future__ import annotations
 
 import ast
 import warnings
+from collections.abc import Iterator
 
 from graveyard.analyzers.python.records import (
     ClassDef,
     DecoratorInfo,
     FileFacts,
     FunctionDef,
+    ModuleBinding,
     Param,
 )
 
 _FuncNode = ast.FunctionDef | ast.AsyncFunctionDef
+_BLOCK_FIELDS = ("body", "orelse", "finalbody", "handlers")
 
 
 def parse_module(text: str) -> ast.Module | None:
@@ -107,6 +110,75 @@ def _merge(funcs: list[FunctionDef]) -> list[FunctionDef]:
     return list(merged.values())
 
 
+def _module_blocks(stmts: list[ast.stmt]) -> Iterator[ast.stmt]:
+    """Yield module-level statements, descending into if/try/with/for/while blocks."""
+    for stmt in stmts:
+        yield stmt
+        if isinstance(stmt, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef):
+            continue
+        for field in _BLOCK_FIELDS:
+            for child in getattr(stmt, field, None) or []:
+                if isinstance(child, ast.ExceptHandler):
+                    yield from _module_blocks(child.body)
+                elif isinstance(child, ast.stmt):
+                    yield from _module_blocks([child])
+        for case in getattr(stmt, "cases", None) or []:
+            yield from _module_blocks(case.body)
+
+
+def _target_names(target: ast.expr) -> Iterator[str]:
+    if isinstance(target, ast.Name):
+        yield target.id
+    elif isinstance(target, ast.Tuple | ast.List):
+        for elt in target.elts:
+            yield from _target_names(elt)
+    elif isinstance(target, ast.Starred):
+        yield from _target_names(target.value)
+
+
+def _strings(value: ast.expr | None) -> list[str]:
+    if not isinstance(value, ast.List | ast.Tuple):
+        return []
+    return [e.value for e in value.elts if isinstance(e, ast.Constant) and isinstance(e.value, str)]
+
+
+def _bindings(
+    tree: ast.Module,
+) -> tuple[list[ModuleBinding], list[str], bool]:
+    out: list[ModuleBinding] = []
+    dunder_all: list[str] = []
+    star = False
+    for stmt in _module_blocks(tree.body):
+        if isinstance(stmt, ast.FunctionDef | ast.AsyncFunctionDef):
+            out.append(ModuleBinding(stmt.name, "def", stmt.lineno))
+        elif isinstance(stmt, ast.ClassDef):
+            out.append(ModuleBinding(stmt.name, "class", stmt.lineno))
+        elif isinstance(stmt, ast.Assign | ast.AnnAssign | ast.AugAssign):
+            targets = stmt.targets if isinstance(stmt, ast.Assign) else [stmt.target]
+            for target in targets:
+                for name in _target_names(target):
+                    out.append(ModuleBinding(name, "assign", stmt.lineno))
+                    if name == "__all__":
+                        dunder_all += _strings(stmt.value)
+        elif isinstance(stmt, ast.Import):
+            for a in stmt.names:
+                name = a.asname or a.name.split(".")[0]
+                out.append(ModuleBinding(name, "import", stmt.lineno, a.name))
+        elif isinstance(stmt, ast.ImportFrom):
+            for a in stmt.names:
+                if a.name == "*":
+                    star = True
+                else:
+                    name = a.asname or a.name
+                    out.append(
+                        ModuleBinding(name, "import", stmt.lineno, stmt.module, stmt.level, a.name)
+                    )
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Global):
+            out += [ModuleBinding(n, "global", node.lineno) for n in node.names]
+    return out, dunder_all, star
+
+
 def collect_definitions(path: str, text: str) -> FileFacts:
     """Collect the per-file facts; an unparseable file yields ``parsed=False``."""
     text = text.replace("\r\n", "\n")
@@ -138,11 +210,15 @@ def collect_definitions(path: str, text: str) -> FileFacts:
                     decorators=tuple(_decorator(d) for d in stmt.decorator_list),
                 )
             )
+    bindings, dunder_all, star = _bindings(tree)
     return FileFacts(
         path=path,
         parsed=True,
         functions=tuple(_merge(funcs)),
         classes=tuple(classes),
+        bindings=tuple(bindings),
+        dunder_all=tuple(dunder_all),
         has_module_getattr=any(f.name == "__getattr__" and f.class_name is None for f in funcs),
+        has_star_import=star,
         lines=tuple(text.split("\n")),
     )
