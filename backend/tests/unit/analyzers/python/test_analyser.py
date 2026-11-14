@@ -9,6 +9,7 @@ import pytest
 from graveyard import cli
 from graveyard.analyzers.python.analyser import analyse_python
 from graveyard.ingestion import ingest_local
+from graveyard.ingestion.samples import sample_snapshot
 from graveyard.models import AnalysisTimeout, RepoSnapshot
 
 
@@ -38,7 +39,7 @@ def test_recursive_only_call_still_reported(tmp_path: Path) -> None:
 
 def test_test_only_reference_is_covered(tmp_path: Path) -> None:
     snap = repo(tmp_path, {"a.py": "def f():\n    pass\n", "tests/test_a.py": "f()  # call\n"})
-    (cand,) = analyse_python(snap).candidates
+    (cand,) = analyse_python(snap, resolve_all_unresolved=True).candidates
     assert cand.test_coverage == "covered"
     assert [(c.file_path, c.line, c.kind, c.snippet) for c in cand.callers] == [
         ("tests/test_a.py", 1, "test_reference", "f()  # call")
@@ -87,3 +88,35 @@ def test_cli_on_haunted_sample(capsys: pytest.CaptureFixture[str]) -> None:
     found = {c["qualified_name"] for c in json.loads(capsys.readouterr().out)["candidates"]}
     assert {"export_legacy_csv", "Stock.recount"} <= found
     assert "build_report" not in found
+
+
+def test_same_name_in_two_modules_judged_separately(tmp_path: Path) -> None:  # P24
+    d = "def apply(x):\n    return x\n"
+    snap = repo(tmp_path, {"p1.py": d, "p2.py": d, "main.py": "from p1 import apply\napply(1)\n"})
+    (cand,) = analyse_python(snap).candidates
+    assert cand.file_path == "p2.py"
+
+
+def test_resolution_only_adds_candidates(tmp_path: Path) -> None:  # P25
+    snap = repo(
+        tmp_path,
+        {
+            "a.py": "def f():\n    pass\n\n\nclass C:\n    def m(self):\n        pass\n",
+            "b.py": "def f():\n    pass\n\n\ndef g():\n    pass\n",
+            "main.py": "import a\nfrom b import g\na.f()\ng()\nf()\nx.m()\n",
+        },
+    )
+
+    def keys(**kw: bool) -> set[tuple[str, str]]:
+        return {(c.file_path, c.qualified_name) for c in analyse_python(snap, **kw).candidates}
+
+    assert keys(resolve_all_unresolved=True) <= keys()
+
+
+def test_haunted_sample_apply_discount_versions() -> None:
+    found = {
+        (c.file_path, c.qualified_name)
+        for c in analyse_python(sample_snapshot("haunted")).candidates
+    }
+    assert ("inventory/pricing_v1.py", "apply_discount") in found
+    assert ("inventory/pricing.py", "apply_discount") not in found

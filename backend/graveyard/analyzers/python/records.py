@@ -92,4 +92,7 @@ class FileFacts:
     dunder_all: tuple[str, ...] = ()
     has_module_getattr: bool = False
     has_star_import: bool = False
+    star_imports: tuple[tuple[str | None, int], ...] = ()  # (module, level) of `from M import *`
+    has_dynamic_lookup: bool = False  # PY-F3 construct anywhere in the file
+    local_import_names: frozenset[str] = frozenset()  # names bound by non-module-level imports
     lines: tuple[str, ...] = ()

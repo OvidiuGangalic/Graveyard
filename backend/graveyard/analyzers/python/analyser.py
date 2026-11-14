@@ -9,6 +9,7 @@ from graveyard.analyzers.common import cap_callers, check_deadline, clip, snippe
 from graveyard.analyzers.python.definitions import collect_definitions, parse_module
 from graveyard.analyzers.python.records import FileFacts, FunctionDef, Occurrence
 from graveyard.analyzers.python.references import _tokens, collect_occurrences
+from graveyard.analyzers.python.resolve import ModuleIndex, Unresolved, resolve
 from graveyard.ingestion.walker import read_text
 from graveyard.models import (
     AnalyserResult,
@@ -32,11 +33,13 @@ def analyse_python(
     snapshot: RepoSnapshot,
     progress: ProgressFn = no_progress,
     deadline: float | None = None,
+    *,
+    resolve_all_unresolved: bool = False,
 ) -> AnalyserResult:
     files = [f for f in snapshot.source_files if f.language == "python"]
     facts: dict[str, FileFacts] = {}
     texts: dict[str, list[str]] = {}
-    index: dict[str, list[_Entry]] = defaultdict(list)
+    occs: list[_Entry] = []
     failed = 0
     for done, source in enumerate(files, 1):
         check_deadline(deadline)
@@ -51,9 +54,20 @@ def analyse_python(
         failed += not file_facts.parsed
         facts[source.path] = file_facts
         texts[source.path] = text.replace("\r\n", "\n").split("\n")
-        for occ in occurrences:
-            index[occ.name].append((source.path, occ, source.is_test))
+        occs += [(source.path, occ, source.is_test) for occ in occurrences]
         progress("python", done)
+
+    modules = ModuleIndex(f.path for f in files)
+    unresolved: dict[str, list[_Entry]] = defaultdict(list)  # by name
+    resolved: dict[FunctionDef, list[_Entry]] = defaultdict(list)
+    for entry in occs:
+        path, occ, _ = entry
+        found = Unresolved() if resolve_all_unresolved else resolve(occ, path, facts, modules)
+        if isinstance(found, Unresolved):
+            unresolved[occ.name].append(entry)
+        else:
+            for func in found:
+                resolved[func].append(entry)
 
     has_tests = any(f.is_test for f in files)
     candidates: list[Candidate] = []
@@ -63,7 +77,14 @@ def analyse_python(
             continue
         for func in facts[source.path].functions:
             defined += 1
-            entries = index.get(func.name, ())
+            entries = resolved.get(func, []) + [
+                e
+                for e in unresolved.get(func.name, ())
+                if func.class_name is None  # bare names never mean methods (PY-S7)
+                or resolve_all_unresolved
+                or e[1].form != "name"
+                or e[1].in_class_body
+            ]
             used = any(
                 not is_test and not _inside(func, source.path, occ.line, path)
                 for path, occ, is_test in entries
