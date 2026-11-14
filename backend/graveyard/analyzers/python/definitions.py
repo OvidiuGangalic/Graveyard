@@ -200,6 +200,16 @@ def _is_dynamic(node: ast.AST) -> bool:
     )
 
 
+def _is_getattr_reflection(node: ast.AST) -> bool:
+    """PY-F4: `getattr(x, name)` where `name` is not a string literal."""
+    if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)):
+        return False
+    if node.func.id != "getattr" or len(node.args) < 2:
+        return False
+    arg = node.args[1]
+    return not (isinstance(arg, ast.Constant) and isinstance(arg.value, str))
+
+
 def _local_import_names(tree: ast.Module) -> frozenset[str]:
     """Names (alias, imported name, module segments) of imports outside module-level blocks."""
     top = {id(s) for s in _module_blocks(tree.body)}
@@ -259,5 +269,6 @@ def collect_definitions(path: str, text: str, tree: ast.Module | None = None) ->
         star_imports=tuple(star),
         local_import_names=_local_import_names(tree),
         has_dynamic_lookup=any(_is_dynamic(n) for n in ast.walk(tree)),
+        has_getattr_reflection=any(_is_getattr_reflection(n) for n in ast.walk(tree)),
         lines=tuple(text.split("\n")),
     )

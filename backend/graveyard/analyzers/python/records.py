@@ -95,5 +95,16 @@ class FileFacts:
     has_star_import: bool = False
     star_imports: tuple[tuple[str | None, int], ...] = ()  # (module, level) of `from M import *`
     has_dynamic_lookup: bool = False  # PY-F3 construct anywhere in the file
+    has_getattr_reflection: bool = False  # `getattr(x, <non-literal>)` anywhere (PY-F4)
     local_import_names: frozenset[str] = frozenset()  # names bound by non-module-level imports
     lines: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class StringLit:
+    """A non-docstring string constant (PY-W1)."""
+
+    value: str
+    line: int
+    file: str
+    snippet: str = ""
