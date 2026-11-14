@@ -168,12 +168,13 @@ def resolve_specifier(
         files = sorted(f for f in sources if index.package_for(f) is pkg)
         subpath = spec[len(name) :].lstrip("/")
         if subpath:
-            return _suffix_match(subpath, files)
+            return _suffix_match(subpath, files) or None  # e.g. build output: unresolved
         # No subpath: the entry point may re-export anything, so use the entry files when
         # they are known source files, else the whole package.
         return (pkg.entry_files & sources) or frozenset(files)
     if index.external(spec):
         return frozenset()
     if "/" not in spec and not spec.startswith(("~", "@")):
-        return frozenset()  # looks like a package name; TS-R7 never matches bare specifiers
+        # an undeclared package, or a tsconfig baseUrl import of a repo file ("utils")
+        return _suffix_match(spec, sources) or frozenset()
     return _suffix_match(spec, sources) or None

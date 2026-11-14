@@ -115,10 +115,11 @@ def test_alias_suffix_match() -> None:
 def test_workspace_and_external_resolution() -> None:
     assert _r("@haunted/sdk") == {"packages/sdk/src/index.ts"}
     assert _r("@haunted/sdk/util/fmt") == {"packages/sdk/src/util/fmt.ts"}
-    assert _r("@haunted/sdk/nothing") == frozenset()
+    assert _r("@haunted/sdk/nothing") is None  # e.g. build output: unresolved, not "nothing"
     assert _r("react") == frozenset()
     assert _r("node:fs") == frozenset()
-    assert _r("lodash") == frozenset()  # package-like, not listed: never suffix matched
+    assert _r("lodash") == frozenset()  # undeclared package, no repo file of that name
+    assert _r("dates") == {"web/src/utils/dates.ts"}  # tsconfig baseUrl import of a repo file
 
 
 def test_workspace_without_entry_files_uses_whole_package() -> None:
