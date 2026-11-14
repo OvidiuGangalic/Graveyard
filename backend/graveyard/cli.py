@@ -6,11 +6,12 @@ import argparse
 import json
 import sys
 from collections.abc import Sequence
+from datetime import UTC, datetime
 
-from graveyard.analyzers.python.analyser import analyse_python
 from graveyard.ingestion import ingest_local
 from graveyard.ingestion.samples import sample_snapshot
 from graveyard.models import RepoSnapshot
+from graveyard.pipeline import run
 
 
 def _snapshot(target: str) -> RepoSnapshot:
@@ -20,26 +21,17 @@ def _snapshot(target: str) -> RepoSnapshot:
 
 
 def analyse(target: str) -> dict[str, object]:
-    snapshot = _snapshot(target)
-    result = analyse_python(snapshot)
+    result = run(_snapshot(target), datetime.now(UTC))
     return {
-        "files": [f.path for f in snapshot.source_files],
-        "candidates": [
-            {
-                "name": c.name,
-                "qualified_name": c.qualified_name,
-                "kind": c.kind,
-                "file_path": c.file_path,
-                "start_line": c.start_line,
-                "end_line": c.end_line,
-                "test_coverage": c.test_coverage,
-                "callers": [
-                    {"file_path": k.file_path, "line": k.line, "kind": k.kind, "snippet": k.snippet}
-                    for k in c.callers
-                ],
-            }
-            for c in result.candidates
-        ],
+        "warnings": list(result.warnings),
+        "totals": {
+            "total_files_scanned": result.total_files_scanned,
+            "files_skipped": result.files_skipped,
+            "items_by_language": result.items_by_language,
+            "items_by_verdict": result.items_by_verdict,
+            "total_dead_items": result.total_dead_items,
+        },
+        "items": [item.model_dump(mode="json") for item in result.items],
     }
 
 
