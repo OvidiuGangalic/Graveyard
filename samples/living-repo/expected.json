@@ -1,0 +1,8 @@
+{
+  "items": [
+    { "name": "banner", "kind": "function", "language": "python", "file_path": "shop/__init__.py", "verdict": "revive", "confidence": "low" },
+    { "name": "daily_report", "kind": "function", "language": "python", "file_path": "shop/reports.py", "verdict": "revive", "confidence": "low" },
+    { "name": "weekly_report", "kind": "function", "language": "python", "file_path": "shop/reports.py", "verdict": "revive", "confidence": "low" }
+  ],
+  "forbidden": { "verdicts": ["bury"], "confidences": ["high"] }
+}
