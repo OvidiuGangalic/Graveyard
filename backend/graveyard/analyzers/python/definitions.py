@@ -179,10 +179,13 @@ def _bindings(
     return out, dunder_all, star
 
 
-def collect_definitions(path: str, text: str) -> FileFacts:
-    """Collect the per-file facts; an unparseable file yields ``parsed=False``."""
+def collect_definitions(path: str, text: str, tree: ast.Module | None = None) -> FileFacts:
+    """Collect the per-file facts; an unparseable file yields ``parsed=False``.
+
+    ``tree`` is the already-parsed module, when the caller has one.
+    """
     text = text.replace("\r\n", "\n")
-    tree = parse_module(text)
+    tree = tree or parse_module(text)
     if tree is None:
         return FileFacts(path=path, parsed=False)
     funcs: list[FunctionDef] = []

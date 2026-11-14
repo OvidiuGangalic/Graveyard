@@ -1,0 +1,89 @@
+from __future__ import annotations
+
+import json
+import time
+from pathlib import Path
+
+import pytest
+
+from graveyard import cli
+from graveyard.analyzers.python.analyser import analyse_python
+from graveyard.ingestion import ingest_local
+from graveyard.models import AnalysisTimeout, RepoSnapshot
+
+
+def repo(tmp_path: Path, files: dict[str, str]) -> RepoSnapshot:
+    for rel, text in files.items():
+        (tmp_path / rel).parent.mkdir(parents=True, exist_ok=True)
+        (tmp_path / rel).write_text(text, encoding="utf-8")
+    return ingest_local(tmp_path)
+
+
+def names(snapshot: RepoSnapshot) -> list[str]:
+    return [c.qualified_name for c in analyse_python(snapshot).candidates]
+
+
+def test_uncalled_function_reported(tmp_path: Path) -> None:
+    assert names(repo(tmp_path, {"a.py": "def dead():\n    pass\n"})) == ["dead"]
+
+
+def test_called_from_other_module_not_reported(tmp_path: Path) -> None:
+    snap = repo(tmp_path, {"a.py": "def used():\n    pass\n", "b.py": "import a\na.used()\n"})
+    assert names(snap) == []
+
+
+def test_recursive_only_call_still_reported(tmp_path: Path) -> None:
+    assert names(repo(tmp_path, {"a.py": "def f(n):\n    return f(n - 1)\n"})) == ["f"]
+
+
+def test_test_only_reference_is_covered(tmp_path: Path) -> None:
+    snap = repo(tmp_path, {"a.py": "def f():\n    pass\n", "tests/test_a.py": "f()  # call\n"})
+    (cand,) = analyse_python(snap).candidates
+    assert cand.test_coverage == "covered"
+    assert [(c.file_path, c.line, c.kind, c.snippet) for c in cand.callers] == [
+        ("tests/test_a.py", 1, "test_reference", "f()  # call")
+    ]
+
+
+def test_not_covered_versus_unknown(tmp_path: Path) -> None:
+    snap = repo(tmp_path, {"a.py": "def f():\n    pass\n", "tests/test_a.py": "x = 1\n"})
+    assert analyse_python(snap).candidates[0].test_coverage == "not_covered"
+    alone = repo(tmp_path / "b", {"a.py": "def f():\n    pass\n"})
+    assert analyse_python(alone).candidates[0].test_coverage == "unknown"
+
+
+def test_test_file_functions_never_reported(tmp_path: Path) -> None:
+    snap = repo(tmp_path, {"tests/test_a.py": "def helper():\n    pass\n"})
+    result = analyse_python(snap)
+    assert result.candidates == () and result.functions_defined == 0
+
+
+def test_unparseable_file_tokens_keep_function_alive(tmp_path: Path) -> None:
+    snap = repo(tmp_path, {"a.py": "def f():\n    pass\n", "bad.py": "def (:\n f()\n"})
+    result = analyse_python(snap)
+    assert result.candidates == () and result.files_failed == 1
+
+
+def test_deadline_passed_raises(tmp_path: Path) -> None:
+    snap = repo(tmp_path, {"a.py": "x = 1\n"})
+    with pytest.raises(AnalysisTimeout):
+        analyse_python(snap, deadline=time.monotonic() - 1)
+
+
+def test_order_independent_of_source_files_order(tmp_path: Path) -> None:
+    snap = repo(tmp_path, {"a.py": "def a1():\n    pass\n", "b.py": "def b1():\n    pass\n"})
+    flipped = RepoSnapshot(**{**snap.__dict__, "source_files": snap.source_files[::-1]})
+    assert analyse_python(snap) == analyse_python(flipped)
+
+
+def test_snippet_equals_source_lines(tmp_path: Path) -> None:
+    src = "def f(x):\n    return x\n"
+    (cand,) = analyse_python(repo(tmp_path, {"a.py": src})).candidates
+    assert (cand.code_snippet, cand.snippet_truncated) == (src.rstrip("\n"), False)
+
+
+def test_cli_on_haunted_sample(capsys: pytest.CaptureFixture[str]) -> None:
+    assert cli.main(["analyse", "sample:haunted"]) == 0
+    found = {c["qualified_name"] for c in json.loads(capsys.readouterr().out)["candidates"]}
+    assert {"export_legacy_csv", "Stock.recount"} <= found
+    assert "build_report" not in found
