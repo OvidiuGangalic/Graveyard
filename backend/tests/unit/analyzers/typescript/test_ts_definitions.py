@@ -28,6 +28,28 @@ def test_TS_D2_arrow_and_function_expression_constants():
     assert fns("const { a } = () => 1, [b] = x;") == {}
 
 
+def test_TS_D3_methods_and_arrow_fields_not_constructors_or_accessors():
+    src = "class C { m() {} p = () => 1; q = 5; constructor() {} get g() { return 1 } set g(v) {} }"
+    f = fns(src)
+    assert set(f) == {"C.m", "C.p"}
+    assert f["C.m"].is_method and f["C.m"].class_name == "C"
+    assert facts(src).classes[0].method_names == ("m", "p")
+
+
+def test_TS_D3_abstract_class_and_abstract_method_is_stub():
+    f = fns("abstract class A { abstract m(): void; n() { return 1 } }")
+    assert (f["A.m"].is_abstract, f["A.m"].body_kind) == (True, "stub")
+    assert (f["A.n"].is_abstract, f["A.n"].body_kind) == (False, "normal")
+
+
+def test_TS_D3_class_facts():
+    c = facts("@d() export class B extends ns.A<T> implements I { m() {} }").classes[0]
+    assert (c.name, c.extends, c.extends_name) == ("B", "ns.A", "A")
+    assert c.implements and c.is_exported and c.decorators == ("@d()",)
+    js = facts("class B extends A {}", "a.js").classes[0]
+    assert (js.extends, js.extends_name, js.implements) == ("A", "A", False)
+
+
 def test_TS_D4_anonymous_default_export_uses_basename():
     for src in ("export default function () {}", "export default () => 1"):
         f = facts(src, "src/widget.ts")
@@ -48,6 +70,13 @@ def test_nested_inline_and_object_literal_functions_ignored():
     assert set(fns(src)) == {"outer"}
 
 
+def test_decorated_method_span_starts_at_decorator():
+    m = fns("class C {\n  /** doc */\n  @a\n  @b()\n  m() {\n  }\n}")["C.m"]
+    assert (m.start_line, m.end_line, m.decorators) == (3, 6, ("@a", "@b()"))
+    c = facts("@d\nexport class C {}").classes[0]
+    assert (c.start_line, c.end_line) == (1, 2)
+
+
 def test_overloads_merged_with_span_from_first_signature():
     src = (
         "/** doc */\nfunction f(a: string): void;\nfunction f(a: number): void;\n"
@@ -56,6 +85,9 @@ def test_overloads_merged_with_span_from_first_signature():
     r = facts(src)
     assert [(f.start_line, f.end_line, f.body_kind) for f in r.functions] == [(2, 4, "normal")]
     assert r.overload_name_lines == {("f", 2), ("f", 3)}
+    r = facts("class C {\n  m(a: string): void;\n  m(a: any) { return a }\n}")
+    assert [(x.qualified_name, x.start_line) for x in r.functions] == [("C.m", 2)]
+    assert r.overload_name_lines == {("m", 2)}
 
 
 def test_exported_via_export_statement_and_clause_with_alias():
@@ -75,6 +107,11 @@ def test_exported_via_commonjs_forms():
     )
     f = fns(src, "a.js")
     assert [f[n].is_exported for n in names] == [True, True, True, True, True, False]
+
+
+def test_class_method_exported_when_class_is():
+    f = fns("export class A { m() {} }\nclass B { m() {} }\nexport { B };\nclass D { m() {} }")
+    assert [f[n].is_exported for n in ("A.m", "B.m", "D.m")] == [True, True, False]
 
 
 def test_params_counting():
