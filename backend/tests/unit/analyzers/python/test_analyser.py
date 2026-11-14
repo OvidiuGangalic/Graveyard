@@ -138,3 +138,17 @@ def test_exempt_entry_points_are_never_reported(tmp_path: Path) -> None:
         "class C:\n    def __repr__(self):\n        return 'c'\n\n\ndef dead():\n    return 1\n"
     )
     assert names(repo(tmp_path, {"a.py": src})) == ["dead"]
+
+
+def test_weak_evidence_reaches_the_candidate(tmp_path: Path) -> None:
+    files = {
+        "a.py": "def hook():\n    return 1\n",
+        "b.py": "ACTIONS = ['hook', 'other']\n",
+        "conf.yaml": "handler: hook\n",
+    }
+    (cand,) = analyse_python(repo(tmp_path, files)).candidates
+    assert cand.flag_details[Flag.STRING_MATCH] == "b.py:1"
+    assert {(c.file_path, c.kind) for c in cand.callers} == {
+        ("b.py", "string_match"),
+        ("conf.yaml", "string_match"),
+    }
