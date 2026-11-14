@@ -102,12 +102,12 @@ def _modules_of(
     """Repo files that receiver `recv` (starting with the name `b` binds) denotes; None: unknown."""
     if b.imported is None:
         assert b.module is not None
-        if not idx.resolve(b.module):
+        if not idx.resolve(b.module) and not idx.resolve(b.module.split(".")[0]):
             return []  # outside the repo
         plain = b.name == b.module.split(".")[0]
         if plain and (recv == b.module or b.module.startswith(recv + ".")):
-            return idx.resolve(recv)
-        return idx.resolve(b.module) if recv == b.name and not plain else None
+            return idx.resolve(recv) or None
+        return (idx.resolve(b.module) or None) if recv == b.name and not plain else None
     sub, files = idx.files(b, file, b.imported), idx.files(b, file)
     if recv != b.name or (files and not sub):
         return None
@@ -138,6 +138,9 @@ def _resolve_attr(occ: Occurrence, file: str, facts: _Facts, idx: ModuleIndex) -
 def _resolve(occ: Occurrence, file: str, facts: _Facts, idx: ModuleIndex) -> Resolution:
     ff = facts[file]
     if not ff.parsed or occ.form == "token":
+        return UNRESOLVED
+    head = occ.receiver.split(".")[0] if occ.form == "attr" and occ.receiver else occ.name
+    if head in ff.local_import_names:  # a function- or class-local import may rebind it
         return UNRESOLVED
     if occ.form == "attr":
         return _resolve_attr(occ, file, facts, idx)

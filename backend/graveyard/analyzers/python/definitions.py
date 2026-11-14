@@ -200,6 +200,18 @@ def _is_dynamic(node: ast.AST) -> bool:
     )
 
 
+def _local_import_names(tree: ast.Module) -> frozenset[str]:
+    """Names (alias, imported name, module segments) of imports outside module-level blocks."""
+    top = {id(s) for s in _module_blocks(tree.body)}
+    names: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import | ast.ImportFrom) and id(node) not in top:
+            for a in node.names:
+                names |= {a.asname or a.name, *a.name.split(".")}
+                names.add(a.name.split(".")[0])
+    return frozenset(names)
+
+
 def collect_definitions(path: str, text: str, tree: ast.Module | None = None) -> FileFacts:
     """Collect the per-file facts; an unparseable file yields ``parsed=False``.
 
@@ -245,6 +257,7 @@ def collect_definitions(path: str, text: str, tree: ast.Module | None = None) ->
         has_module_getattr=any(f.name == "__getattr__" and f.class_name is None for f in funcs),
         has_star_import=bool(star),
         star_imports=tuple(star),
+        local_import_names=_local_import_names(tree),
         has_dynamic_lookup=any(_is_dynamic(n) for n in ast.walk(tree)),
         lines=tuple(text.split("\n")),
     )

@@ -40,6 +40,18 @@ def test_PY_S3_module_attribute_resolves_into_module() -> None:
     assert res({**attr, "main.py": "import os\nos.f()\n"}, form="attr") == set()
 
 
+def test_local_imports_make_names_unresolved() -> None:
+    top = "from a import f\ndef g():\n    from b import f\n    f()\n"
+    assert res({"main.py": top, "a.py": F, "b.py": F}) == U
+    local = "def g():\n    import b as m\n    m.f()\n"
+    assert res({"main.py": local, "b.py": F}, form="attr") == U
+
+
+def test_partial_plain_import_is_not_outside_the_repo() -> None:
+    files = {"a/__init__.py": F, "main.py": "import a.missing\na.f()\n"}
+    assert res(files, form="attr") == {"a/__init__.py"}
+
+
 def test_PY_S6_unbound_bare_name_refers_to_no_repo_function() -> None:
     assert res({"main.py": "def g(f):\n    f()\n", "b.py": F}) == set()
 
