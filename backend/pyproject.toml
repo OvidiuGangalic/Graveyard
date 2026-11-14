@@ -1,0 +1,42 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "graveyard"
+version = "0.1.0"
+description = "Finds dead code in a public GitHub repo and shows it as a graveyard."
+requires-python = ">=3.12"
+license = { text = "MIT" }
+dependencies = [
+    "fastapi",
+    "uvicorn[standard]",
+    "pydantic>=2",
+    "httpx",
+    "tree-sitter",
+    "tree-sitter-typescript",
+    "tree-sitter-javascript",
+]
+
+[project.optional-dependencies]
+# hypothesis<6.156: later releases ship a compiled module that Windows Smart App Control
+# blocks on the owner's machine; 6.155.x is the last pure-Python release.
+dev = ["pytest", "hypothesis<6.156", "ruff"]
+
+[tool.setuptools.packages.find]
+include = ["graveyard*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "property: property-based tests (Hypothesis)",
+    "acceptance: accuracy gate over the sample repos",
+    "network: needs internet access; skipped unless GRAVEYARD_NETWORK=1",
+]
