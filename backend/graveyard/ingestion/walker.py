@@ -107,6 +107,13 @@ def _looks_generated(path: Path) -> bool:
     return any(marker in head for marker in GENERATED_MARKERS)
 
 
+def _inside(root_real: str, path_real: str) -> bool:
+    try:
+        return os.path.commonpath([root_real, path_real]) == root_real
+    except ValueError:  # different drives on Windows
+        return False
+
+
 def walk(
     root: Path,
     *,
@@ -130,7 +137,7 @@ def walk(
             if full.is_symlink() or not full.is_file():
                 continue
             real = os.path.realpath(full)
-            if os.path.commonpath([real_root, real]) != real_root:
+            if not _inside(real_root, real):
                 continue
             rel = full.relative_to(root).as_posix()
             ext = full.suffix.lower()

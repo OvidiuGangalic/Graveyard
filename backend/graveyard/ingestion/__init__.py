@@ -33,7 +33,10 @@ def ingest_local(path: Path | str) -> RepoSnapshot:
     has_git = (root / ".git").exists()
     commit = _git_out(root, "rev-parse", "HEAD") if has_git else ""
     branch = _git_out(root, "rev-parse", "--abbrev-ref", "HEAD") if has_git else ""
-    shallow = has_git and (root / ".git" / "shallow").exists()
+    history_depth = None
+    if has_git and (root / ".git" / "shallow").exists():
+        count = _git_out(root, "rev-list", "--count", "HEAD")
+        history_depth = int(count) if count.isdigit() else 1
     return RepoSnapshot(
         root=root,
         repo_url=root.as_uri(),
@@ -42,7 +45,7 @@ def ingest_local(path: Path | str) -> RepoSnapshot:
         commit=commit,
         is_sample=False,
         has_git=bool(has_git and commit),
-        history_depth=0 if shallow else None,
+        history_depth=history_depth,
         source_files=walked.source_files,
         text_files=walked.text_files,
         files_skipped=walked.files_skipped,
