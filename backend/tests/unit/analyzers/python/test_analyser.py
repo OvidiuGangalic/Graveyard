@@ -87,7 +87,7 @@ def test_snippet_equals_source_lines(tmp_path: Path) -> None:
 
 def test_cli_on_haunted_sample(capsys: pytest.CaptureFixture[str]) -> None:
     assert cli.main(["analyse", "sample:haunted"]) == 0
-    found = {c["qualified_name"] for c in json.loads(capsys.readouterr().out)["candidates"]}
+    found = {c["name"] for c in json.loads(capsys.readouterr().out)["items"]}
     assert {"export_legacy_csv", "Stock.recount"} <= found
     assert "build_report" not in found
 
