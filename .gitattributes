@@ -1,0 +1,4 @@
+# Keep LF everywhere: diffs, blame and the sample materialiser are line-exact.
+* text=auto eol=lf
+*.png binary
+*.ico binary
