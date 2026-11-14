@@ -1,0 +1,24 @@
+{
+  "items": [
+    { "name": "export_legacy_csv", "kind": "function", "language": "python", "file_path": "inventory/reports.py", "verdict": "bury", "confidence": "high" },
+    { "name": "Stock.recount", "kind": "function", "language": "python", "file_path": "inventory/models.py", "verdict": "bury", "confidence": "high" },
+    { "name": "apply_seasonal_discount", "kind": "function", "language": "python", "file_path": "inventory/pricing.py", "verdict": "bury", "confidence": "medium" },
+    { "name": "round_half_up_v2", "kind": "function", "language": "python", "file_path": "inventory/pricing.py", "verdict": "bury", "confidence": "medium" },
+    { "name": "handle_refund", "kind": "function", "language": "python", "file_path": "inventory/plugins.py", "verdict": "revive", "confidence": "low" },
+    { "name": "old_webhook", "kind": "function", "language": "python", "file_path": "inventory/api.py", "verdict": "unsure", "confidence": "low" },
+    { "name": "json", "kind": "import", "language": "python", "file_path": "inventory/reports.py", "verdict": "bury", "confidence": "high" },
+    { "name": "Optional", "kind": "import", "language": "python", "file_path": "inventory/models.py", "verdict": "bury", "confidence": "high" },
+    { "name": "inventory.signals", "kind": "import", "language": "python", "file_path": "inventory/api.py", "verdict": "bury", "confidence": "medium" },
+    { "name": "padLeftLegacy", "kind": "function", "language": "typescript", "file_path": "web/src/utils/format.ts", "verdict": "bury", "confidence": "high" },
+    { "name": "formatCurrencyOld", "kind": "function", "language": "typescript", "file_path": "web/src/utils/format.ts", "verdict": "bury", "confidence": "medium" },
+    { "name": "fetchLegacyUsers", "kind": "function", "language": "typescript", "file_path": "web/src/lib/api.ts", "verdict": "bury", "confidence": "medium" },
+    { "name": "OldBanner", "kind": "function", "language": "typescript", "file_path": "web/src/components/OldBanner.tsx", "verdict": "revive", "confidence": "low" },
+    { "name": "createLegacyClient", "kind": "function", "language": "typescript", "file_path": "packages/sdk/src/index.ts", "verdict": "revive", "confidence": "low" },
+    { "name": "useMemo", "kind": "import", "language": "typescript", "file_path": "web/src/components/Cart.tsx", "verdict": "bury", "confidence": "high" },
+    { "name": "User", "kind": "import", "language": "typescript", "file_path": "web/src/lib/api.ts", "verdict": "bury", "confidence": "medium" },
+    { "name": "apply_discount", "kind": "function", "language": "python", "file_path": "inventory/pricing_v1.py", "verdict": "bury", "confidence": "high" },
+    { "name": "StockV1.adjust", "kind": "function", "language": "python", "file_path": "inventory/stock_v1.py", "verdict": "bury", "confidence": "medium" },
+    { "name": "formatDate", "kind": "function", "language": "typescript", "file_path": "web/src/utils/dates-v1.ts", "verdict": "bury", "confidence": "medium" }
+  ],
+  "forbidden": { "verdicts": [], "confidences": [] }
+}

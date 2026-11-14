@@ -1,0 +1,69 @@
+{
+  "commits": [
+    {
+      "days_ago": 730,
+      "author": "Morticia Graves",
+      "message": "Initial inventory service",
+      "files": [
+        "README.md",
+        "pyproject.toml",
+        "inventory/__init__.py",
+        "inventory/reports.py",
+        "inventory/pricing.py",
+        "inventory/pricing_v1.py"
+      ]
+    },
+    {
+      "days_ago": 600,
+      "author": "Morticia Graves",
+      "message": "Add stock models and CLI",
+      "files": [
+        "inventory/models.py",
+        "inventory/stock_v1.py",
+        "inventory/signals.py",
+        "inventory/cli.py"
+      ]
+    },
+    {
+      "days_ago": 539,
+      "author": "Edgar Poe",
+      "message": "Add API, plugin dispatch and pricing tests",
+      "files": [
+        "inventory/api.py",
+        "inventory/plugins.py",
+        "inventory/registry.py",
+        "tests/test_pricing.py"
+      ]
+    },
+    {
+      "days_ago": 500,
+      "author": "Lenore Usher",
+      "message": "Add web storefront",
+      "files": [
+        "web/package.json",
+        "web/src/app/page.tsx",
+        "web/src/components/Banner.tsx",
+        "web/src/components/Cart.tsx",
+        "web/src/components/OldBanner.tsx",
+        "web/src/lib/api.ts",
+        "web/src/lib/api.test.ts",
+        "web/src/lib/types.ts",
+        "web/src/utils/dates.ts",
+        "web/src/utils/dates-v1.ts",
+        "web/src/utils/format.ts"
+      ]
+    },
+    {
+      "days_ago": 450,
+      "author": "Lenore Usher",
+      "message": "Extract SDK package",
+      "files": ["packages/sdk/package.json", "packages/sdk/src/index.ts"]
+    },
+    {
+      "days_ago": 20,
+      "author": "Edgar Poe",
+      "message": "Add rounding helper and user type",
+      "files": ["inventory/pricing.py", "web/src/lib/api.ts"]
+    }
+  ]
+}
