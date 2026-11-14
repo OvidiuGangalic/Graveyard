@@ -25,11 +25,11 @@ def names(snapshot: RepoSnapshot) -> list[str]:
 
 
 def test_uncalled_function_reported(tmp_path: Path) -> None:
-    assert names(repo(tmp_path, {"a.py": "def dead():\n    pass\n"})) == ["dead"]
+    assert names(repo(tmp_path, {"a.py": "def dead():\n    return 1\n"})) == ["dead"]
 
 
 def test_called_from_other_module_not_reported(tmp_path: Path) -> None:
-    snap = repo(tmp_path, {"a.py": "def used():\n    pass\n", "b.py": "import a\na.used()\n"})
+    snap = repo(tmp_path, {"a.py": "def used():\n    return 1\n", "b.py": "import a\na.used()\n"})
     assert names(snap) == []
 
 
@@ -38,7 +38,7 @@ def test_recursive_only_call_still_reported(tmp_path: Path) -> None:
 
 
 def test_test_only_reference_is_covered(tmp_path: Path) -> None:
-    snap = repo(tmp_path, {"a.py": "def f():\n    pass\n", "tests/test_a.py": "f()  # call\n"})
+    snap = repo(tmp_path, {"a.py": "def f():\n    return 1\n", "tests/test_a.py": "f()  # call\n"})
     (cand,) = analyse_python(snap, resolve_all_unresolved=True).candidates
     assert cand.test_coverage == "covered"
     assert [(c.file_path, c.line, c.kind, c.snippet) for c in cand.callers] == [
@@ -47,20 +47,20 @@ def test_test_only_reference_is_covered(tmp_path: Path) -> None:
 
 
 def test_not_covered_versus_unknown(tmp_path: Path) -> None:
-    snap = repo(tmp_path, {"a.py": "def f():\n    pass\n", "tests/test_a.py": "x = 1\n"})
+    snap = repo(tmp_path, {"a.py": "def f():\n    return 1\n", "tests/test_a.py": "x = 1\n"})
     assert analyse_python(snap).candidates[0].test_coverage == "not_covered"
-    alone = repo(tmp_path / "b", {"a.py": "def f():\n    pass\n"})
+    alone = repo(tmp_path / "b", {"a.py": "def f():\n    return 1\n"})
     assert analyse_python(alone).candidates[0].test_coverage == "unknown"
 
 
 def test_test_file_functions_never_reported(tmp_path: Path) -> None:
-    snap = repo(tmp_path, {"tests/test_a.py": "def helper():\n    pass\n"})
+    snap = repo(tmp_path, {"tests/test_a.py": "def helper():\n    return 1\n"})
     result = analyse_python(snap)
     assert result.candidates == () and result.functions_defined == 0
 
 
 def test_unparseable_file_tokens_keep_function_alive(tmp_path: Path) -> None:
-    snap = repo(tmp_path, {"a.py": "def f():\n    pass\n", "bad.py": "def (:\n f()\n"})
+    snap = repo(tmp_path, {"a.py": "def f():\n    return 1\n", "bad.py": "def (:\n f()\n"})
     result = analyse_python(snap)
     assert result.candidates == () and result.files_failed == 1
 
@@ -72,7 +72,9 @@ def test_deadline_passed_raises(tmp_path: Path) -> None:
 
 
 def test_order_independent_of_source_files_order(tmp_path: Path) -> None:
-    snap = repo(tmp_path, {"a.py": "def a1():\n    pass\n", "b.py": "def b1():\n    pass\n"})
+    snap = repo(
+        tmp_path, {"a.py": "def a1():\n    return 1\n", "b.py": "def b1():\n    return 1\n"}
+    )
     flipped = RepoSnapshot(**{**snap.__dict__, "source_files": snap.source_files[::-1]})
     assert analyse_python(snap) == analyse_python(flipped)
 
@@ -101,8 +103,8 @@ def test_resolution_only_adds_candidates(tmp_path: Path) -> None:  # P25
     snap = repo(
         tmp_path,
         {
-            "a.py": "def f():\n    pass\n\n\nclass C:\n    def m(self):\n        pass\n",
-            "b.py": "def f():\n    pass\n\n\ndef g():\n    pass\n",
+            "a.py": "def f():\n    return 1\n\n\nclass C:\n    def m(self):\n        return 1\n",
+            "b.py": "def f():\n    return 1\n\n\ndef g():\n    return 1\n",
             "main.py": "import a\nfrom b import g\na.f()\ng()\nf()\nx.m()\n",
         },
     )
@@ -120,3 +122,11 @@ def test_haunted_sample_apply_discount_versions() -> None:
     }
     assert ("inventory/pricing_v1.py", "apply_discount") in found
     assert ("inventory/pricing.py", "apply_discount") not in found
+
+
+def test_exempt_entry_points_are_never_reported(tmp_path: Path) -> None:
+    src = (
+        "def main():\n    return 1\n\n\n@app.get('/x')\ndef route():\n    return 1\n\n\n"
+        "class C:\n    def __repr__(self):\n        return 'c'\n\n\ndef dead():\n    return 1\n"
+    )
+    assert names(repo(tmp_path, {"a.py": src})) == ["dead"]
