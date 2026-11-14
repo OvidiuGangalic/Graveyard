@@ -1,0 +1,5 @@
+{
+  "name": "@haunted/sdk",
+  "version": "2.1.0",
+  "main": "src/index.ts"
+}
