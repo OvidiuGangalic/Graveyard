@@ -8,7 +8,7 @@ import tomllib
 from pathlib import Path, PurePosixPath
 from typing import Any
 
-from graveyard.analyzers.python.records import ClassDef, FunctionDef
+from graveyard.analyzers.python.records import ClassDef, DecoratorInfo, FunctionDef
 from graveyard.models import SourceFile
 
 _E3 = frozenset(
@@ -40,11 +40,23 @@ _E8 = frozenset(
     "tool resource prompt".split()
 )
 _E9_PREFIXES = ("visit_", "leave_", "do_", "handle_")
+# PY-F1 benign decorators: matched on the final name, or on the module prefix for the starred ones
+BENIGN_DECORATORS = frozenset(
+    "staticmethod classmethod property setter getter deleter cached_property lru_cache cache wraps "
+    "contextmanager asynccontextmanager singledispatch singledispatchmethod total_ordering final "
+    "override deprecated no_type_check dataclass".split()
+)
+BENIGN_PREFIXES = ("typing.", "functools.", "contextlib.")
 _SKIP_DIRS = frozenset({".git", "node_modules", ".venv", "venv", "__pycache__"})
 
 _TARGET = re.compile(r"^\s*([A-Za-z_][\w.]*)\s*:\s*([A-Za-z_]\w*)")
 _BLOCK = re.compile(r"(?:console_scripts|gui_scripts)\W{0,5}(.*?)(?:\]|\n\[|\Z)", re.DOTALL)
 _ENTRY = re.compile(r"[\w.\-]+\s*=\s*([A-Za-z_][\w.]*)\s*:\s*([A-Za-z_]\w*)")
+
+
+def is_benign(d: DecoratorInfo) -> bool:
+    """PY-F1: a decorator that does not change the signature or hide the function."""
+    return d.final_name in BENIGN_DECORATORS or d.dotted.startswith(BENIGN_PREFIXES)
 
 
 def _target(value: object) -> tuple[str, str] | None:

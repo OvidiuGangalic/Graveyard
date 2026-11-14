@@ -80,6 +80,7 @@ class Occurrence:
     in_class_body: bool
     is_store: bool
     call: CallShape | None
+    self_param: str | None = None  # first parameter of the enclosing method, if any
 
 
 @dataclass(frozen=True)

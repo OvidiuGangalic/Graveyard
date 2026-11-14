@@ -1,4 +1,4 @@
-"""Resolve a name occurrence to the definitions it means (rules PY-S1, S2, S3, S6, S7)."""
+"""Resolve a name occurrence to the definitions it means (rules PY-S1..S7)."""
 
 from __future__ import annotations
 
@@ -18,6 +18,40 @@ _NONE: frozenset[FunctionDef] = frozenset()
 _Facts = dict[str, FileFacts]
 
 
+class ClassIndex:
+    """Repo classes by name; a class family is its ancestors and descendants (by base name)."""
+
+    def __init__(self, facts: _Facts) -> None:
+        self.bases: dict[str, set[str]] = {}
+        self.methods: dict[tuple[str, str], list[FunctionDef]] = {}
+        for ff in facts.values():
+            for c in ff.classes:
+                self.bases.setdefault(c.name, set()).update(c.base_names)
+            for f in ff.functions:
+                if f.class_name:
+                    self.methods.setdefault((f.class_name, f.name), []).append(f)
+        for name, bases in self.bases.items():
+            self.bases[name] = {b for b in bases if b in self.bases}
+
+    def family(self, name: str) -> set[str]:
+        down: dict[str, set[str]] = {}
+        for cls, bases in self.bases.items():
+            for b in bases:
+                down.setdefault(b, set()).add(cls)
+        out = {name}
+        for graph in (self.bases, down):
+            todo = [name]
+            while todo:
+                for nxt in graph.get(todo.pop(), ()):
+                    if nxt not in out:
+                        out.add(nxt)
+                        todo.append(nxt)
+        return out
+
+    def find(self, classes: Iterable[str], name: str) -> frozenset[FunctionDef]:
+        return frozenset(f for c in classes for f in self.methods.get((c, name), ()))
+
+
 class ModuleIndex:
     """Dotted module path -> repo files, by whole-segment suffix match."""
 
@@ -27,6 +61,12 @@ class ModuleIndex:
             parts = path.removesuffix(".py").split("/")
             self._modules.append((tuple(parts[:-1] if parts[-1] == "__init__" else parts), path))
         self.memo: dict[tuple[object, ...], Resolution] = {}
+        self._classes: ClassIndex | None = None
+
+    def classes(self, facts: _Facts) -> ClassIndex:
+        if self._classes is None:
+            self._classes = ClassIndex(facts)
+        return self._classes
 
     def resolve(self, dotted: str) -> list[str]:
         want = tuple(dotted.split(".")) if dotted else ()
@@ -116,9 +156,33 @@ def _modules_of(
     return sub
 
 
+def _class_names(occ: Occurrence, file: str, facts: _Facts, idx: ModuleIndex) -> set[str]:
+    """Repo classes whose family a PY-S4 receiver (`self`, `super()`, a class name) denotes."""
+    recv = occ.receiver or ""
+    if occ.self_param and recv in (occ.self_param, "super()") and occ.enclosing_class:
+        return {occ.enclosing_class}
+    bs = [b for b in facts[file].bindings if b.name == recv]
+    if not bs or "." in recv:
+        return set()
+    if all(b.kind == "class" for b in bs):
+        return {recv}
+    if all(b.kind == "import" and b.imported for b in bs):
+        return {
+            b.imported or ""
+            for b in bs
+            for f in idx.files(b, file)
+            if any(c.name == b.imported for c in facts[f].classes)
+        }
+    return set()
+
+
 def _resolve_attr(occ: Occurrence, file: str, facts: _Facts, idx: ModuleIndex) -> Resolution:
     if occ.receiver is None:
         return UNRESOLVED
+    names = _class_names(occ, file, facts, idx)  # PY-S4
+    if names:
+        ci = idx.classes(facts)
+        return ci.find(set().union(*(ci.family(n) for n in names)), occ.name) or UNRESOLVED
     bs = [b for b in facts[file].bindings if b.name == occ.receiver.split(".")[0]]
     if not bs or any(b.kind != "import" for b in bs):
         return UNRESOLVED
@@ -163,10 +227,15 @@ def _resolve(occ: Occurrence, file: str, facts: _Facts, idx: ModuleIndex) -> Res
                 return r
             out |= r
         return frozenset(out)
+    own = _NONE  # PY-S5: a bare name in the body of class C that C defines
+    if occ.in_class_body and occ.enclosing_class:
+        own = idx.classes(facts).find([occ.enclosing_class], occ.name)
     if any(b.name == occ.name for b in ff.bindings):  # PY-S1 / PY-S2
         r = _find(file, occ.name, 0, facts, idx)
-        return UNRESOLVED if r is None else r
-    if ff.has_star_import or ff.has_dynamic_lookup or occ.in_class_body:  # PY-S7 (S5 comes later)
+        return UNRESOLVED if r is None or isinstance(r, Unresolved) else r | own
+    if own:
+        return own
+    if ff.has_star_import or ff.has_dynamic_lookup or occ.in_class_body:  # PY-S7
         return UNRESOLVED
     return _NONE  # PY-S6
 
@@ -175,7 +244,15 @@ def resolve(
     occ: Occurrence, file: str, facts_by_file: _Facts, module_index: ModuleIndex
 ) -> Resolution:
     """The definitions `occ` (found in `file`) refers to, or UNRESOLVED."""
-    key = (file, occ.form, occ.name, occ.receiver, occ.in_class_body)
+    key = (
+        file,
+        occ.form,
+        occ.name,
+        occ.receiver,
+        occ.in_class_body,
+        occ.enclosing_class,
+        occ.self_param,
+    )
     if key not in module_index.memo:
         module_index.memo[key] = _resolve(occ, file, facts_by_file, module_index)
     return module_index.memo[key]
