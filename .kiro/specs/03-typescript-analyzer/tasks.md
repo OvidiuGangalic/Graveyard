@@ -2,13 +2,13 @@
 
 Depends on spec 01 tasks 1–6 and spec 02 tasks 1 and 6.4 (shared contract and text-reference helper).
 
-- [ ] 1. Tree-sitter spike (timebox: 1 hour)
+- [x] 1. Tree-sitter spike (timebox: 1 hour)
   - Install the three approved packages; parse one `.ts`, one `.tsx`, one `.js` file; print the node types for a function declaration, arrow-function const, class method, import, export, JSX element
   - Correct any node type name in `design.md` that differs from the installed grammar; record the installed versions in `pyproject.toml` as exact pins
   - If prebuilt wheels are not available for the Docker base image, stop and ask the owner
   - _Requirements: 1.1_
 
-- [ ] 2. Parser wrapper
+- [x] 2. Parser wrapper
   - `parser.py`: grammar per extension, `parse(bytes) -> tree`, `has_error`, iterative cursor walk helper
   - _Requirements: 1.1, 1.5, 8.4_
 

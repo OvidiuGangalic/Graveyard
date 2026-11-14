@@ -17,7 +17,7 @@ Entry point: `analyse_typescript(snapshot, progress, deadline) -> AnalyserResult
 
 ### Dependency note
 
-Uses the `tree-sitter` Python bindings with the `tree-sitter-typescript` (TypeScript and TSX grammars) and `tree-sitter-javascript` wheels. These ship prebuilt wheels, so the Docker image needs no compiler. Task 1 is a spike that confirms the installed versions' API (`Language`, `Parser`, node type names) before any rule is written, because the bindings' API has changed between releases. Node type names below are those of the grammars as known at spec time; the spike corrects them if they differ.
+Uses the `tree-sitter` Python bindings with the `tree-sitter-typescript` (TypeScript and TSX grammars) and `tree-sitter-javascript` wheels. These ship prebuilt wheels, so the Docker image needs no compiler. Task 1 is a spike that confirms the installed versions' API (`Language`, `Parser`, node type names) before any rule is written, because the bindings' API has changed between releases. Pinned: `tree-sitter==0.26.1`, `tree-sitter-typescript==0.23.2`, `tree-sitter-javascript==0.25.0`. Node type names below were verified against these versions by the spike; `test_parser.py` asserts them, so a grammar upgrade that renames a node fails loudly. Differences between grammars: `.js` class names are `identifier` (TypeScript: `type_identifier`); `.js` has no type nodes; `.ts` does not parse JSX (use `.tsx`); import, export and JSX nodes are identical in all three.
 
 ## Definition rules
 
@@ -25,8 +25,10 @@ Uses the `tree-sitter` Python bindings with the `tree-sitter-typescript` (TypeSc
 |---|---|---|
 | TS-D1 | `function_declaration`, `generator_function_declaration` | `name` field |
 | TS-D2 | `lexical_declaration` / `variable_declaration` → `variable_declarator` whose `value` is `arrow_function`, `function_expression` or `generator_function` | declarator `name` (identifier only; destructuring is skipped) |
-| TS-D3 | `class_declaration` → `class_body` → `method_definition` (not `constructor`, not `get`/`set`), and `public_field_definition` whose value is an arrow function | `name` field, qualified as `Class.name` |
-| TS-D4 | `export_statement` with `default` and an anonymous function or arrow function | name = file basename without extension; `is_default = true` |
+| TS-D3 | `class_declaration` or `abstract_class_declaration` (class name is `type_identifier` in `.ts`/`.tsx`, `identifier` in `.js`) → `class_body` → `method_definition` (not the one whose name text is `constructor`; not one with an anonymous `get` or `set` child), and `public_field_definition` whose `value` is an arrow function | `name` field, qualified as `Class.name` |
+| TS-D4 | `export_statement` with a `value:` field that is `function_expression`, `arrow_function` or `generator_function` (anonymous default export; a named `export default function f(){}` uses the `declaration:` field and is TS-D1) | name = file basename without extension; `is_default = true` |
+
+Span of a definition: the node's own range, extended back over decorators. A method's decorators are `decorator` siblings that precede its `method_definition` in `class_body` (field `decorator:`), up to the previous non-decorator sibling. A class's decorators are `decorator` children of the `class_declaration`, or of the enclosing `export_statement` when written before `export`. Overload signatures (`function_signature`, and `abstract_method_signature` for abstract methods) are separate nodes before the implementation: include them in the implementation's Span, and never record their name nodes as references (TS-R1), otherwise an uncalled overloaded function keeps itself alive.
 
 Exported status: the node is inside an `export_statement`; or its name appears in an `export_clause` (`export { a, b as c }`) in the same file; or the file contains `module.exports = name`, `module.exports.x = name`, `exports.x = name`, or the name as a (shorthand) property in an object assigned to `module.exports`. A method is Exported if its class is.
 
@@ -38,9 +40,11 @@ Exported status: the node is inside an `export_statement`; or its name appears i
 | TS-R2 | `property_identifier` in `member_expression` (`obj.name`, `this.name`) | text |
 | TS-R3 | `shorthand_property_identifier`, `shorthand_property_identifier_pattern` | text |
 | TS-R4 | `type_identifier`, and identifiers inside `type_query` (`typeof name`) | text |
-| TS-R5 | JSX: the name of `jsx_opening_element` / `jsx_self_closing_element`, including each part of a `member_expression` / `nested_identifier` name | text |
+| TS-R5 | JSX: the name of `jsx_opening_element` / `jsx_self_closing_element`, including each part of a nested `member_expression` name (`<A.B.C />` is `member_expression` of `member_expression`; there is no `nested_identifier`) | text |
 | TS-R6 | `import_specifier` and `export_specifier`: the **imported/exported** name (the `name` field, not the alias) | text |
 | TS-R7 | **Path-suffix match (used by specifier resolution for non-relative specifiers).** A specifier string from a static `import`, `export ... from`, `require("...")` or `import("...")` matches file `F` when, after removing a leading `./`, `../` sequence, `@/`, `~/` or `src/`, and a trailing extension or `/index`, the remainder is a path-segment suffix of `F` without its extension (or of `F`'s directory when `F` is an `index` file). Bare package specifiers (no `/` and not starting with `.`, `@/` or `~/`) never match. | file |
+
+Call shapes: `obj[expr](...)` is `call_expression` with `function: subscript_expression` (a dynamic access, input to TS-F6, not a named reference); `import(...)` is `call_expression` with `function: (import)`; `require(...)` is `call_expression` with `function: identifier` text `require`. In all three the specifier is a `string` → `string_fragment` child of `arguments`.
 
 For a parse-error file, every `[A-Za-z_$][A-Za-z0-9_$]*` token in its text is recorded as an occurrence.
 
@@ -72,11 +76,11 @@ Following re-exports: if a resolved file does not itself declare the export but 
 
 | ID | Rule |
 |---|---|
-| TS-A1 | Applies only to unresolved member calls `obj.x(a, b)` without spread arguments, where the call site and the method definition are both in `.ts` or `.tsx` files. With `n` arguments, the call is incompatible with method `d` when `d` has no rest parameter and `n` exceeds its parameter count, or `n` is less than the number of required parameters (no `?`, no default; a leading `this` parameter is not counted). An incompatible call is not a reference to `d`. Never applied to `.js`/`.jsx`/`.mjs`/`.cjs` code, which may legally pass any number of arguments. |
+| TS-A1 | Applies only to unresolved member calls `obj.x(a, b)` without spread arguments, where the call site and the method definition are both in `.ts` or `.tsx` files. With `n` arguments, the call is incompatible with method `d` when `d` has no rest parameter and `n` exceeds its parameter count, or `n` is less than the number of required parameters. Parameters are children of `formal_parameters`: `required_parameter` without a `value` field is required; `required_parameter` with a `value` field (default) is optional; `optional_parameter` (written `x?`) is optional; `required_parameter` whose `pattern` is a `rest_pattern` is the rest parameter; `required_parameter` whose `pattern` is `this` is not counted at all. An incompatible call is not a reference to `d`. Never applied to `.js`/`.jsx`/`.mjs`/`.cjs` code, which may legally pass any number of arguments. |
 
 A type-checked build rejects such a call, but the runtime does not, and an `any`-typed receiver escapes the check. That is why `ARITY_MISMATCH` always caps confidence at `medium`.
 
-TypeScript overload signatures (`function x(a: string): void; function x(a: number, b: number): void; function x(...) { }`) are one function with one implementation; they are merged (TS-E6), not treated as separate items.
+TypeScript overload signatures (`function x(a: string): void; function x(a: number, b: number): void; function x(...) { }`, node `function_signature`) are one function with one implementation; they are merged into its Span (see TS-D), not treated as separate items, and their names are not references.
 
 ### Direct references
 
@@ -95,8 +99,8 @@ An occurrence in a Production file, outside `f`'s Span, is a Direct reference to
 | TS-E2 | **Other route-module conventions.** Exports named `loader`, `action`, `meta`, `links`, `headers`, `handle`, `shouldRevalidate`, `ErrorBoundary`, `HydrateFallback`, `clientLoader`, `clientAction` in any file under a `routes/` directory; exports named `load`, `actions`, `prerender`, `entries` in files named `+page`, `+layout`, `+server`, `+page.server`, `+layout.server`; the default export of any file under `routes/`, `api/`, `functions/`, `netlify/functions/`, `supabase/functions/`. |
 | TS-E3 | **Entry files.** Every export of a file named by `main`, `module`, `bin`, `types` or any string under `exports` in the nearest `package.json` is not exempt but gets `LIBRARY_API` (see Requirement 3.4). The default export of a file named `main`, `index`, `server`, `app`, `worker`, `sw`, `service-worker`, `background`, `content` at a package root or in `src/` **is** exempt. |
 | TS-E4 | **Framework methods.** Methods named `render`, `componentDidMount`, `componentDidUpdate`, `componentWillUnmount`, `shouldComponentUpdate`, `getSnapshotBeforeUpdate`, `componentDidCatch`, `getDerivedStateFromProps`, `getDerivedStateFromError`, `ngOnInit`, `ngOnDestroy`, `ngOnChanges`, `ngAfterViewInit`, `ngAfterContentInit`, `ngDoCheck`, `connectedCallback`, `disconnectedCallback`, `attributeChangedCallback`, `adoptedCallback`, `onModuleInit`, `onModuleDestroy`, `onApplicationBootstrap`, `canActivate`, `intercept`, `transform`, `use`, `catch`, `toJSON`, `toString`, `valueOf`, `then`. |
-| TS-E5 | **Decorators.** Any method with a decorator, and any method of a class that has a decorator (Angular, NestJS, TypeORM, lit). |
-| TS-E6 | **Stubs and overloads.** Function overload signatures (no body); `abstract` methods; functions whose body is empty or only `throw`. |
+| TS-E5 | **Decorators.** Any method with a decorator (a preceding `decorator` sibling in `class_body`), and any method of a class that has a decorator (child of the class or of its `export_statement`) (Angular, NestJS, TypeORM, lit). |
+| TS-E6 | **Stubs and overloads.** Function overload signatures (`function_signature`, no body); `abstract` methods (`abstract_method_signature`); functions whose body is empty or only `throw`. |
 
 ## Flag rules
 
@@ -106,7 +110,7 @@ An occurrence in a Production file, outside `f`'s Span, is a Direct reference to
 | TS-F2 | `LIBRARY_API` | Candidate is Exported and (its package is a Library package, or its file is an entry file per TS-E3, or its file is the target of `export * from` in a file belonging to a Library package). |
 | TS-F3 | `DYNAMIC_IMPORT` | Requirement 3.5. |
 | TS-F4 | `SCRIPT_GLOBAL` | Requirement 2.2. |
-| TS-F5 | `STRING_MATCH` | Whole-token match in `string` / `template_string` nodes of any Source file outside own Span, or in Text-reference files (shared helper from spec 02 task 6.4). Import specifier strings are not searched. Names of 3 characters or fewer are not searched in Text-reference files. |
+| TS-F5 | `STRING_MATCH` | Whole-token match in the `string_fragment` text of `string` nodes and of `template_string` nodes (a `template_string` holds `string_fragment` and `template_substitution` children; substitutions are code, walked for TS-R1 references and not scanned as text) of any Source file outside own Span, or in Text-reference files (shared helper from spec 02 task 6.4). Not searched: import and re-export specifiers, and the string argument of `import(...)` and `require(...)`. Names of 3 characters or fewer are not searched in Text-reference files. |
 | TS-F6 | `DYNAMIC_PATTERN_IN_FILE` | Requirement 5.2. |
 | TS-F7 | `REPO_HAS_REFLECTION` | Requirement 5.3. |
 | TS-F8 | `EXTERNAL_BASE_CLASS` | Requirement 5.4. |
@@ -116,7 +120,7 @@ An occurrence in a Production file, outside `f`'s Span, is a Direct reference to
 
 ## Import rules
 
-ImportBinding: each local name bound by an `import_statement`: default import, each `import_specifier` (local name = alias if present), `namespace_import`. `import type` and inline `type` specifiers are included.
+ImportBinding: each local name bound by an `import_statement`: default import (an unnamed `identifier` child of `import_clause`), each `import_specifier` (local name = `alias` field if present, else `name`), `namespace_import` (`namespace_import > identifier`). `import type` and inline `type` specifiers are included (`type` is an anonymous token, not a node to inspect).
 
 Used: the local name has an occurrence by TS-R1 to TS-R5 in the same file outside `import_statement` nodes, or appears in an `export_clause`.
 
