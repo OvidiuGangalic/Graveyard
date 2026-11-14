@@ -96,7 +96,9 @@ def analyse_python(
             skipped = [  # PY-A1: calls this definition could not accept
                 e
                 for e in by_name
-                if not resolve_all_unresolved and e[1].call and incompatible(func, e[1].call)
+                if not resolve_all_unresolved
+                and e[1].call
+                and incompatible(func, e[1].call, e[1].receiver)
             ]
             entries = resolved.get(func, []) + [e for e in by_name if e not in skipped]
             used = any(

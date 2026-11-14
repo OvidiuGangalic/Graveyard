@@ -40,10 +40,11 @@ def test_PY_S4_family_spans_ancestors_and_descendants_across_files() -> None:
     assert res(files, "leaf") == {"Kid.leaf"}
 
 
-def test_PY_S4_sibling_is_outside_the_family() -> None:
+def test_PY_S4_siblings_share_a_family() -> None:
     sib = "class A(Base):\n    def a(self):\n        self.s()\n\n"
     sib += "class B(Base):\n    def s(self):\n        pass\n"
-    assert res({"main.py": BASE + sib}, "s") == U
+    assert res({"main.py": BASE + sib}, "s") == {"B.s"}
+    assert res({"main.py": sib + "class Z:\n    pass\n", "o.py": "class Q:\n    pass\n"}, "s") == U
 
 
 def test_PY_S4_super_and_class_name_receivers() -> None:
@@ -72,3 +73,10 @@ def test_PY_S5_class_body_name_resolves_to_own_method() -> None:
     src = "class A:\n    def _get(self):\n        pass\n\n    total = property(_get)\n"
     assert res({"main.py": src}, "_get", form="name") == {"A._get"}
     assert res({"main.py": "class A:\n    x = property(_nope)\n"}, "_nope", form="name") == U
+
+
+def test_PY_S4_family_is_the_connected_component() -> None:
+    x = "    def x(self):\n        pass\n"
+    run = "    def run(self):\n        self.x()\n"
+    src = f"class M:\n{x}\nclass A:\n{x}{run}\nclass C(M, A):\n    pass\n"
+    assert res({"main.py": src}, "x") == {"M.x", "A.x"}

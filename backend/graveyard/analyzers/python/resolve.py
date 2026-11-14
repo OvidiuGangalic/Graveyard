@@ -19,7 +19,7 @@ _Facts = dict[str, FileFacts]
 
 
 class ClassIndex:
-    """Repo classes by name; a class family is its ancestors and descendants (by base name)."""
+    """Repo classes by name; a family is a connected component of the base-name graph."""
 
     def __init__(self, facts: _Facts) -> None:
         self.bases: dict[str, set[str]] = {}
@@ -38,14 +38,13 @@ class ClassIndex:
         for cls, bases in self.bases.items():
             for b in bases:
                 down.setdefault(b, set()).add(cls)
-        out = {name}
-        for graph in (self.bases, down):
-            todo = [name]
-            while todo:
-                for nxt in graph.get(todo.pop(), ()):
-                    if nxt not in out:
-                        out.add(nxt)
-                        todo.append(nxt)
+        out, todo = {name}, [name]  # the connected component: any dispatch order may reach it
+        while todo:
+            cur = todo.pop()
+            for nxt in (*self.bases.get(cur, ()), *down.get(cur, ())):
+                if nxt not in out:
+                    out.add(nxt)
+                    todo.append(nxt)
         return out
 
     def find(self, classes: Iterable[str], name: str) -> frozenset[FunctionDef]:

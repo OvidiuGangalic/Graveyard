@@ -47,6 +47,22 @@ def test_PY_A1_method_drops_first_parameter(decorator: str, pos: int, expected: 
     assert incompatible(func, CallShape(pos, (), False)) is expected  # static keeps `self`
 
 
+@pytest.mark.parametrize(
+    ("receiver", "expected"),
+    [
+        ("stock", True),
+        ("self.repo", True),
+        ("x.StockV1", False),
+        ("Base", False),
+        ("super()", False),
+    ],
+)
+def test_PY_A1_unbound_reading_for_class_like_receivers(receiver: str, expected: bool) -> None:
+    src = "class StockV1:\n    def adjust(self, sku):\n        pass\n"
+    (func,) = collect_definitions("a.py", src).functions
+    assert incompatible(func, CallShape(2, (), False), receiver) is expected
+
+
 NAMES = ["a", "b", "c", "d"]
 
 

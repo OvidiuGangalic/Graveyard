@@ -6,12 +6,8 @@ from graveyard.analyzers.python.entrypoints import is_benign
 from graveyard.analyzers.python.records import CallShape, FunctionDef
 
 
-def incompatible(func: FunctionDef, call: CallShape) -> bool:
-    """True if `call` would raise TypeError for `func`; False when unsure (wrapper, unpacking)."""
-    if call.has_unpack or not all(is_benign(d) for d in func.decorators):
-        return False
+def _rejects(func: FunctionDef, names: tuple[str, ...], call: CallShape) -> bool:
     p = func.params
-    names = p.positional[1:] if func.class_name and not func.is_staticmethod else p.positional
     required = names[: max(len(names) - p.positional_defaults, 0)]
     if call.positional > len(names) and not p.has_vararg:
         return True
@@ -19,3 +15,19 @@ def incompatible(func: FunctionDef, call: CallShape) -> bool:
         return True
     given = {*names[: call.positional], *call.keywords}
     return any(r not in given for r in (*required, *p.kwonly_required))
+
+
+def incompatible(func: FunctionDef, call: CallShape, receiver: str | None = None) -> bool:
+    """True if `call` would raise TypeError for `func`; False when unsure (wrapper, unpacking).
+
+    A method is read as bound (first parameter dropped); when the receiver looks like a class
+    (`Base.m(obj)`, `super().m()`) the unbound reading (first parameter supplied) also counts.
+    """
+    if call.has_unpack or not all(is_benign(d) for d in func.decorators):
+        return False
+    names = func.params.positional
+    if not func.class_name or func.is_staticmethod:
+        return _rejects(func, names, call)
+    last = (receiver or "").rsplit(".", 1)[-1]
+    unbound = last[:1].isupper() or last.startswith("super")
+    return _rejects(func, names[1:], call) and not (unbound and not _rejects(func, names, call))
