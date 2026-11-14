@@ -122,6 +122,10 @@ def test_bindings() -> None:
     assert {("c1", "assign"), ("z", "assign"), ("g1", "global"), ("w", "assign")} <= got
     assert {("fn", "def"), ("K", "class")} <= got
     assert ("a", "import") not in got
+    imp = {b.name: (b.module, b.level, b.imported) for b in f.bindings if b.kind == "import"}
+    assert imp["c"] == ("a.b", 0, None) and imp["s"] == ("p", 0, "r")
+    rel = facts("from ..pkg import m\nfrom . import n\n").bindings
+    assert [(b.module, b.level, b.imported) for b in rel] == [("pkg", 2, "m"), (None, 1, "n")]
 
 
 def test_dunder_all_getattr_star() -> None:

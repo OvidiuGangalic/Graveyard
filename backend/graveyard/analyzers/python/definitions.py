@@ -163,13 +163,16 @@ def _bindings(
         elif isinstance(stmt, ast.Import):
             for a in stmt.names:
                 name = a.asname or a.name.split(".")[0]
-                out.append(ModuleBinding(name, "import", stmt.lineno))
+                out.append(ModuleBinding(name, "import", stmt.lineno, a.name))
         elif isinstance(stmt, ast.ImportFrom):
             for a in stmt.names:
                 if a.name == "*":
                     star = True
                 else:
-                    out.append(ModuleBinding(a.asname or a.name, "import", stmt.lineno))
+                    name = a.asname or a.name
+                    out.append(
+                        ModuleBinding(name, "import", stmt.lineno, stmt.module, stmt.level, a.name)
+                    )
     for node in ast.walk(tree):
         if isinstance(node, ast.Global):
             out += [ModuleBinding(n, "global", node.lineno) for n in node.names]

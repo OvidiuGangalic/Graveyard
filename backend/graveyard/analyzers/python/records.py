@@ -58,6 +58,28 @@ class ModuleBinding:
     name: str
     kind: Literal["def", "class", "assign", "import", "global"]
     line: int
+    module: str | None = None  # import bindings: dotted module as written, no leading dots
+    level: int = 0  # relative-import level (number of leading dots)
+    imported: str | None = None  # `from M import y as x` -> "y"; plain `import` -> None
+
+
+@dataclass(frozen=True)
+class CallShape:
+    positional: int
+    keywords: tuple[str, ...]
+    has_unpack: bool
+
+
+@dataclass(frozen=True)
+class Occurrence:
+    name: str
+    line: int
+    form: Literal["name", "attr", "import", "token"]
+    receiver: str | None
+    enclosing_class: str | None
+    in_class_body: bool
+    is_store: bool
+    call: CallShape | None
 
 
 @dataclass(frozen=True)
