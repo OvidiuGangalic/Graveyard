@@ -64,6 +64,25 @@ class ModuleBinding:
 
 
 @dataclass(frozen=True)
+class ImportBinding:
+    """One name bound by one alias of a module-level import statement."""
+
+    bound_name: str
+    display_name: str  # what the Candidate is called: `a.b`, `x` for `from m import x as y`
+    start_line: int
+    end_line: int
+    is_plain_import: bool  # `import a.b` (not `from ... import`)
+    module: str  # dotted, as written (no leading dots)
+    top_module: str
+    is_future: bool = False
+    is_star: bool = False
+    in_try_importerror: bool = False
+    in_if: bool = False
+    noqa: bool = False
+    names_in_statement: int = 1
+
+
+@dataclass(frozen=True)
 class CallShape:
     positional: int
     keywords: tuple[str, ...]

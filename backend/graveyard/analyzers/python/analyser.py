@@ -23,7 +23,18 @@ from graveyard.analyzers.python.evidence import (
     flags_for,
     string_callers,
 )
-from graveyard.analyzers.python.records import FileFacts, FunctionDef, Occurrence, StringLit
+from graveyard.analyzers.python.imports import (
+    collect_import_bindings,
+    dead_imports,
+    reexport_pairs,
+)
+from graveyard.analyzers.python.records import (
+    FileFacts,
+    FunctionDef,
+    ImportBinding,
+    Occurrence,
+    StringLit,
+)
 from graveyard.analyzers.python.references import _tokens, collect_occurrences
 from graveyard.analyzers.python.resolve import ModuleIndex, Unresolved, resolve
 from graveyard.ingestion.walker import read_text
@@ -58,6 +69,7 @@ def analyse_python(
     texts: dict[str, list[str]] = {}
     occs: list[_Entry] = []
     strings_by_token: dict[str, list[StringLit]] = defaultdict(list)  # PY-W1 lookup
+    imports: dict[str, tuple[tuple[ImportBinding, ...], tuple[Occurrence, ...]]] = {}
     failed = 0
     for done, source in enumerate(files, 1):
         check_deadline(deadline)
@@ -67,10 +79,12 @@ def analyse_python(
             file_facts = collect_definitions(source.path, text, tree)
             occurrences = collect_occurrences(text, tree)
             strings = collect_strings(source.path, tree, file_facts.lines) if tree else ()
+            found = collect_import_bindings(source.path, tree, file_facts.lines) if tree else ()
         except Exception:
             log.exception("Python analysis failed for %s", source.path)
             file_facts, occurrences = FileFacts(source.path, False), tuple(_tokens(text))
-            strings = ()
+            strings, found = (), ()
+        imports[source.path] = (found, occurrences)
         for lit in strings:
             for token in set(PY_TOKEN.findall(lit.value)):
                 strings_by_token[token].append(lit)
@@ -177,6 +191,9 @@ def analyse_python(
                     flag_details=details,
                 )
             )
+    reexported = reexport_pairs({path: ff.bindings for path, ff in facts.items()})  # PY-I6
+    for path, (found, occurrences) in imports.items():
+        candidates += dead_imports(path, found, occurrences, facts[path], reexported)
     candidates.sort(key=lambda c: (c.file_path, c.start_line, c.name))
     return AnalyserResult(tuple(candidates), defined, len(files) - failed, failed)
 
