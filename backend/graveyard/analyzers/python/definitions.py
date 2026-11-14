@@ -144,10 +144,10 @@ def _strings(value: ast.expr | None) -> list[str]:
 
 def _bindings(
     tree: ast.Module,
-) -> tuple[list[ModuleBinding], list[str], bool]:
+) -> tuple[list[ModuleBinding], list[str], list[tuple[str | None, int]]]:
     out: list[ModuleBinding] = []
     dunder_all: list[str] = []
-    star = False
+    star: list[tuple[str | None, int]] = []
     for stmt in _module_blocks(tree.body):
         if isinstance(stmt, ast.FunctionDef | ast.AsyncFunctionDef):
             out.append(ModuleBinding(stmt.name, "def", stmt.lineno))
@@ -167,7 +167,7 @@ def _bindings(
         elif isinstance(stmt, ast.ImportFrom):
             for a in stmt.names:
                 if a.name == "*":
-                    star = True
+                    star.append((stmt.module, stmt.level))
                 else:
                     name = a.asname or a.name
                     out.append(
@@ -177,6 +177,27 @@ def _bindings(
         if isinstance(node, ast.Global):
             out += [ModuleBinding(n, "global", node.lineno) for n in node.names]
     return out, dunder_all, star
+
+
+_DYNAMIC_CALLS = {"globals", "locals", "vars", "eval", "exec", "__import__"}
+
+
+def _is_dynamic(node: ast.AST) -> bool:
+    """PY-F3: a construct that can reach a name by a runtime string."""
+    if isinstance(node, ast.Call):
+        f = node.func
+        if isinstance(f, ast.Name):
+            if f.id in _DYNAMIC_CALLS:
+                return True
+            if f.id in {"getattr", "setattr", "hasattr"} and len(node.args) > 1:
+                arg = node.args[1]
+                return not (isinstance(arg, ast.Constant) and isinstance(arg.value, str))
+        return isinstance(f, ast.Attribute) and ast.unparse(f) == "importlib.import_module"
+    return (
+        isinstance(node, ast.Subscript)
+        and isinstance(node.value, ast.Attribute)
+        and ast.unparse(node.value) == "sys.modules"
+    )
 
 
 def collect_definitions(path: str, text: str, tree: ast.Module | None = None) -> FileFacts:
@@ -222,6 +243,8 @@ def collect_definitions(path: str, text: str, tree: ast.Module | None = None) ->
         bindings=tuple(bindings),
         dunder_all=tuple(dunder_all),
         has_module_getattr=any(f.name == "__getattr__" and f.class_name is None for f in funcs),
-        has_star_import=star,
+        has_star_import=bool(star),
+        star_imports=tuple(star),
+        has_dynamic_lookup=any(_is_dynamic(n) for n in ast.walk(tree)),
         lines=tuple(text.split("\n")),
     )
