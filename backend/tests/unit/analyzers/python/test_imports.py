@@ -92,9 +92,9 @@ def test_assignment_to_bound_name_is_not_a_use() -> None:
 
 def test_alias_names_by_what_is_imported() -> None:
     assert [(c.name, c.qualified_name) for c in dead("import a.b as c\n")] == [("a.b", "a.b")]
-    assert names(dead("from m import x as y\n")) == ["x"]
+    assert names(dead("from m import x as y\n")) == ["y"]
     assert dead("from m import x as y\nprint(y)\n") == []
-    assert names(dead("from m import x as y\nprint(x)\n")) == ["x"]
+    assert names(dead("from m import x as y\nprint(x)\n")) == ["y"]
 
 
 def test_multiline_import_gives_full_range_and_snippet() -> None:

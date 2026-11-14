@@ -71,7 +71,7 @@ def collect_import_bindings(
             out.append(
                 ImportBinding(
                     bound_name=bound,
-                    display_name=a.name,
+                    display_name=a.name if plain else bound,  # Requirement 6.6
                     start_line=start,
                     end_line=end,
                     is_plain_import=plain,
