@@ -1,0 +1,13 @@
+{
+  "version": "v1",
+  "hooks": [
+    {
+      "name": "accuracy-gate",
+      "description": "Re-run the accuracy gate (both sample repos against their expected.json) whenever an analyser, the verdict engine, git archaeology or a sample file changes. False positives are the biggest product risk; this shows one within seconds of the edit that caused it.",
+      "trigger": "PostFileSave",
+      "matcher": "(backend[\\\\/]graveyard[\\\\/](analyzers|verdict|git)[\\\\/].*\\.py|backend[\\\\/]graveyard[\\\\/]pipeline\\.py|samples[\\\\/].*)$",
+      "action": { "type": "command", "command": "python -m pytest backend/tests/acceptance -q" },
+      "timeout": 180
+    }
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "mcpServers": {
+    "github": {
+      "url": "https://api.githubcopilot.com/mcp/",
+      "headers": {
+        "Authorization": "Bearer ${GITHUB_PERSONAL_ACCESS_TOKEN}",
+        "X-MCP-Readonly": "true"
+      },
+      "disabled": false,
+      "autoApprove": []
+    },
+    "filesystem": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "../graveyard-corpus"],
+      "disabled": false,
+      "autoApprove": []
+    }
+  }
+}

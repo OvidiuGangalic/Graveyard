@@ -1,0 +1,13 @@
+{
+  "version": "v1",
+  "hooks": [
+    {
+      "name": "block-commit-on-failing-properties",
+      "description": "Before the agent runs a shell command, check whether it is a git commit. If so, run the property-based tests and the accuracy gate; a failure exits non-zero, which blocks the command. Other shell commands pass straight through.",
+      "trigger": "PreToolUse",
+      "matcher": "shell",
+      "action": { "type": "command", "command": "python .kiro/hooks/scripts/guard_commit.py" },
+      "timeout": 300
+    }
+  ]
+}

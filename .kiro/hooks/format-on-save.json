@@ -1,0 +1,29 @@
+{
+  "version": "v1",
+  "hooks": [
+    {
+      "name": "format-python",
+      "description": "Auto-format backend Python on save so reviews are about logic, not layout. samples/ is excluded in the ruff config.",
+      "trigger": "PostFileSave",
+      "matcher": "backend[\\\\/].*\\.py$",
+      "action": { "type": "command", "command": "python -m ruff format backend" },
+      "timeout": 30
+    },
+    {
+      "name": "autofix-python",
+      "description": "Apply safe lint fixes (unused imports, import order) on save.",
+      "trigger": "PostFileSave",
+      "matcher": "backend[\\\\/].*\\.py$",
+      "action": { "type": "command", "command": "python -m ruff check backend --fix --quiet" },
+      "timeout": 30
+    },
+    {
+      "name": "format-web",
+      "description": "Auto-format frontend files on save with Prettier.",
+      "trigger": "PostFileSave",
+      "matcher": "web[\\\\/](app|components|lib)[\\\\/].*\\.(ts|tsx|css)$",
+      "action": { "type": "command", "command": "npm --prefix web run format" },
+      "timeout": 60
+    }
+  ]
+}

@@ -1,0 +1,25 @@
+{
+  "version": "v1",
+  "hooks": [
+    {
+      "name": "spec-drift-check",
+      "description": "When a requirements.md is edited, have the agent report where the sibling design.md and tasks.md no longer match, so the three documents of a spec never disagree silently.",
+      "trigger": "PostFileSave",
+      "matcher": "\\.kiro[\\\\/]specs[\\\\/][^\\\\/]+[\\\\/]requirements\\.md$",
+      "action": {
+        "type": "agent",
+        "prompt": "A requirements.md under .kiro/specs was just saved. Read it together with the design.md and tasks.md in the same folder. List, as short bullets: (1) acceptance criteria that no task references in its _Requirements_ line, (2) task _Requirements_ references that point at criteria that no longer exist, (3) rule IDs, constants or field names in design.md that contradict the requirements, (4) Correctness Properties whose 'Validates' line points at a missing criterion. Do not edit any file. If everything is consistent, reply with one line saying so."
+      }
+    },
+    {
+      "name": "type-mirror-check",
+      "description": "When the backend API models change, have the agent compare them with the frontend types so the two sides of the HTTP contract cannot drift.",
+      "trigger": "PostFileSave",
+      "matcher": "backend[\\\\/]graveyard[\\\\/]models\\.py$",
+      "action": {
+        "type": "agent",
+        "prompt": "backend/graveyard/models.py was just saved. Compare the pydantic models Analysis, Progress, DeadItem, LastCommit and CallerOut with the TypeScript types in web/lib/types.ts and with the Data Models tables in .kiro/specs/07-api-and-deploy/design.md. Report every field that differs in name, type, nullability or allowed values. Do not edit any file; adding or renaming a field in the API model is a data-model change that needs the owner's approval."
+      }
+    }
+  ]
+}

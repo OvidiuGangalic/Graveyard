@@ -1,0 +1,29 @@
+{
+  "version": "v1",
+  "hooks": [
+    {
+      "name": "unit-tests-python",
+      "description": "Run the fast backend unit tests on save. Stops at the first failure so the agent sees one clear error.",
+      "trigger": "PostFileSave",
+      "matcher": "backend[\\\\/].*\\.py$",
+      "action": { "type": "command", "command": "python -m pytest backend/tests/unit -q -x" },
+      "timeout": 120
+    },
+    {
+      "name": "lint-web",
+      "description": "Lint the frontend on save.",
+      "trigger": "PostFileSave",
+      "matcher": "web[\\\\/](app|components|lib)[\\\\/].*\\.(ts|tsx)$",
+      "action": { "type": "command", "command": "npm --prefix web run lint" },
+      "timeout": 90
+    },
+    {
+      "name": "tests-web",
+      "description": "Run the frontend unit, component and property tests on save.",
+      "trigger": "PostFileSave",
+      "matcher": "web[\\\\/](app|components|lib)[\\\\/].*\\.(ts|tsx)$",
+      "action": { "type": "command", "command": "npm --prefix web test -- --run" },
+      "timeout": 120
+    }
+  ]
+}
