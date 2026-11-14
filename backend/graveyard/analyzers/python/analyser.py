@@ -7,6 +7,7 @@ from collections import defaultdict
 
 from graveyard.analyzers.common import cap_callers, check_deadline, clip, snippet_for
 from graveyard.analyzers.python.definitions import collect_definitions, parse_module
+from graveyard.analyzers.python.entrypoints import exempt_rule, load_script_entries
 from graveyard.analyzers.python.records import FileFacts, FunctionDef, Occurrence
 from graveyard.analyzers.python.references import _tokens, collect_occurrences
 from graveyard.analyzers.python.resolve import ModuleIndex, Unresolved, resolve
@@ -70,13 +71,18 @@ def analyse_python(
                 resolved[func].append(entry)
 
     has_tests = any(f.is_test for f in files)
+    scripts = load_script_entries(snapshot.root, snapshot.text_files)
     candidates: list[Candidate] = []
     defined = 0
     for source in files:
         if source.is_test:
             continue
+        classes = {c.name: c for c in facts[source.path].classes}
         for func in facts[source.path].functions:
             defined += 1
+            cls = classes.get(func.class_name) if func.class_name else None
+            if exempt_rule(func, cls, source, scripts):  # PY-E1..E9: never reported
+                continue
             entries = resolved.get(func, []) + [
                 e
                 for e in unresolved.get(func.name, ())
